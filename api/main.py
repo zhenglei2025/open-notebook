@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
+from api.user_auth import MultiUserAuthMiddleware
 from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -98,6 +98,17 @@ async def lifespan(app: FastAPI):
         # Fail fast - don't start the API with an outdated database schema
         raise RuntimeError(f"Failed to run database migrations: {str(e)}") from e
 
+    # Initialize admin database (users table + default admin user)
+    try:
+        from api.user_management import init_admin_db
+
+        await init_admin_db()
+        logger.info("Admin database initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize admin database: {str(e)}")
+        logger.exception(e)
+        raise RuntimeError(f"Failed to initialize admin database: {str(e)}") from e
+
     # Run podcast profile data migration (legacy strings -> Model registry)
     try:
         from open_notebook.podcasts.migration import migrate_podcast_profiles
@@ -122,10 +133,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
+# Add multi-user JWT authentication middleware
+# Exclude auth and config endpoints from authentication
 app.add_middleware(
-    PasswordAuthMiddleware,
+    MultiUserAuthMiddleware,
     excluded_paths=[
         "/",
         "/health",
@@ -133,6 +144,7 @@ app.add_middleware(
         "/openapi.json",
         "/redoc",
         "/api/auth/status",
+        "/api/auth/login",
         "/api/config",
     ],
 )
@@ -258,6 +270,11 @@ async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
 
 # Include routers
 app.include_router(auth.router, prefix="/api", tags=["auth"])
+
+# Admin user management router
+from api.routers.admin_users import router as admin_users_router
+
+app.include_router(admin_users_router, prefix="/api", tags=["admin"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(search.router, prefix="/api", tags=["search"])

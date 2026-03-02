@@ -5,6 +5,8 @@ import { getApiUrl } from '@/lib/config'
 interface AuthState {
   isAuthenticated: boolean
   token: string | null
+  username: string | null
+  isAdmin: boolean
   isLoading: boolean
   error: string | null
   lastAuthCheck: number | null
@@ -13,7 +15,7 @@ interface AuthState {
   authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
+  login: (username: string, password: string) => Promise<boolean>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -23,6 +25,8 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isAuthenticated: false,
       token: null,
+      username: null,
+      isAdmin: false,
       isLoading: false,
       error: null,
       lastAuthCheck: null,
@@ -74,24 +78,27 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      login: async (password: string) => {
+      login: async (username: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
           const apiUrl = await getApiUrl()
 
-          // Test auth with notebooks endpoint
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
+          // Call the login endpoint
+          const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
             headers: {
-              'Authorization': `Bearer ${password}`,
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({ username, password })
           })
-          
+
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
-              token: password, 
+            const data = await response.json()
+            set({
+              isAuthenticated: true,
+              token: data.token,
+              username: data.username,
+              isAdmin: data.is_admin || false,
               isLoading: false,
               lastAuthCheck: Date.now(),
               error: null
@@ -100,7 +107,7 @@ export const useAuthStore = create<AuthState>()(
           } else {
             let errorMessage = 'Authentication failed'
             if (response.status === 401) {
-              errorMessage = 'Invalid password. Please try again.'
+              errorMessage = 'Invalid username or password. Please try again.'
             } else if (response.status === 403) {
               errorMessage = 'Access denied. Please check your credentials.'
             } else if (response.status >= 500) {
@@ -108,19 +115,21 @@ export const useAuthStore = create<AuthState>()(
             } else {
               errorMessage = `Authentication failed (${response.status})`
             }
-            
-            set({ 
+
+            set({
               error: errorMessage,
               isLoading: false,
               isAuthenticated: false,
-              token: null
+              token: null,
+              username: null,
+              isAdmin: false
             })
             return false
           }
         } catch (error) {
           console.error('Network error during auth:', error)
           let errorMessage = 'Authentication failed'
-          
+
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
             errorMessage = 'Unable to connect to server. Please check if the API is running.'
           } else if (error instanceof Error) {
@@ -128,25 +137,29 @@ export const useAuthStore = create<AuthState>()(
           } else {
             errorMessage = 'An unexpected error occurred during authentication'
           }
-          
-          set({ 
+
+          set({
             error: errorMessage,
             isLoading: false,
             isAuthenticated: false,
-            token: null
+            token: null,
+            username: null,
+            isAdmin: false
           })
           return false
         }
       },
-      
+
       logout: () => {
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          error: null 
+        set({
+          isAuthenticated: false,
+          token: null,
+          username: null,
+          isAdmin: false,
+          error: null
         })
       },
-      
+
       checkAuth: async () => {
         const state = get()
         const { token, lastAuthCheck, isCheckingAuth, isAuthenticated } = state
@@ -179,18 +192,20 @@ export const useAuthStore = create<AuthState>()(
               'Content-Type': 'application/json'
             }
           })
-          
+
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
+            set({
+              isAuthenticated: true,
               lastAuthCheck: now,
-              isCheckingAuth: false 
+              isCheckingAuth: false
             })
             return true
           } else {
             set({
               isAuthenticated: false,
               token: null,
+              username: null,
+              isAdmin: false,
               lastAuthCheck: null,
               isCheckingAuth: false
             })
@@ -198,11 +213,13 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('checkAuth error:', error)
-          set({ 
-            isAuthenticated: false, 
+          set({
+            isAuthenticated: false,
             token: null,
+            username: null,
+            isAdmin: false,
             lastAuthCheck: null,
-            isCheckingAuth: false 
+            isCheckingAuth: false
           })
           return false
         }
@@ -212,7 +229,9 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         token: state.token,
-        isAuthenticated: state.isAuthenticated
+        isAuthenticated: state.isAuthenticated,
+        username: state.username,
+        isAdmin: state.isAdmin
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)

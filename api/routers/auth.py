@@ -1,27 +1,57 @@
 """
 Authentication router for Open Notebook API.
-Provides endpoints to check authentication status.
+Provides login endpoint and auth status check.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from loguru import logger
+from pydantic import BaseModel
 
-from open_notebook.utils.encryption import get_secret_from_env
+from api.user_management import authenticate_user, generate_login_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    username: str
+    is_admin: bool
+
+
+@router.post("/login")
+async def login(request: LoginRequest) -> LoginResponse:
+    """
+    Authenticate user with username and password.
+    Returns a JWT token on success.
+    """
+    user = await authenticate_user(request.username, request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = generate_login_token(user)
+
+    logger.info(f"User '{request.username}' logged in successfully")
+
+    return LoginResponse(
+        token=token,
+        username=user["username"],
+        is_admin=user.get("is_admin", False),
+    )
 
 
 @router.get("/status")
 async def get_auth_status():
     """
-    Check if authentication is enabled.
-    Returns whether a password is required to access the API.
-    Supports Docker secrets via OPEN_NOTEBOOK_PASSWORD_FILE.
+    Check authentication status.
+    Multi-user mode is always enabled.
     """
-    auth_enabled = bool(get_secret_from_env("OPEN_NOTEBOOK_PASSWORD"))
-
     return {
-        "auth_enabled": auth_enabled,
-        "message": "Authentication is required"
-        if auth_enabled
-        else "Authentication is disabled",
+        "auth_enabled": True,
+        "multi_user": True,
+        "message": "Multi-user authentication is enabled",
     }

@@ -46,6 +46,9 @@ def ensure_record_id(value: Union[str, RecordID]) -> RecordID:
 
 @asynccontextmanager
 async def db_connection():
+    # Import here to avoid circular imports
+    from api.user_auth import current_user_db
+
     db = AsyncSurreal(get_database_url())
     await db.signin(
         {
@@ -53,9 +56,15 @@ async def db_connection():
             "password": get_database_password(),
         }
     )
-    await db.use(
-        os.environ.get("SURREAL_NAMESPACE"), os.environ.get("SURREAL_DATABASE")
-    )
+
+    # Multi-user: use per-user database if set by JWT middleware
+    user_db = current_user_db.get()
+    if user_db:
+        database = user_db
+    else:
+        database = os.environ.get("SURREAL_DATABASE")
+
+    await db.use(os.environ.get("SURREAL_NAMESPACE"), database)
     try:
         yield db
     finally:

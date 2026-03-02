@@ -190,7 +190,8 @@ export const enUS = {
   },
   auth: {
     loginTitle: "Open Notebook",
-    loginDesc: "Enter your password to access the application",
+    loginDesc: "Enter your credentials to access the application",
+    usernamePlaceholder: "Username",
     passwordPlaceholder: "Password",
     signingIn: "Signing in...",
     signIn: "Sign In",

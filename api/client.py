@@ -39,11 +39,29 @@ class APIClient:
             )
             self.timeout = 300.0
 
-        # Add authentication header if password is set
+        # Add authentication header using current user context or admin service token
         self.headers = {}
-        password = os.getenv("OPEN_NOTEBOOK_PASSWORD")
-        if password:
-            self.headers["Authorization"] = f"Bearer {password}"
+        try:
+            from api.user_auth import create_jwt, current_user_db, current_user_id
+
+            user_id = current_user_id.get()
+            db_name = current_user_db.get()
+            if user_id and db_name:
+                # Use current user's context for internal calls
+                token = create_jwt({"user_id": user_id, "db_name": db_name})
+                self.headers["Authorization"] = f"Bearer {token}"
+            else:
+                # Fallback: create an admin service token
+                admin_db = os.getenv("SURREAL_DATABASE", "open_notebook")
+                token = create_jwt(
+                    {"user_id": "admin", "db_name": admin_db, "is_admin": True}
+                )
+                self.headers["Authorization"] = f"Bearer {token}"
+        except ImportError:
+            # If user_auth not available, try old password method
+            password = os.getenv("OPEN_NOTEBOOK_PASSWORD")
+            if password:
+                self.headers["Authorization"] = f"Bearer {password}"
 
     def _make_request(
         self, method: str, endpoint: str, timeout: Optional[float] = None, **kwargs

@@ -190,7 +190,8 @@ export const zhCN = {
   },
   auth: {
     loginTitle: "Open Notebook",
-    loginDesc: "输入密码以访问应用程序",
+    loginDesc: "输入您的账号和密码以访问应用程序",
+    usernamePlaceholder: "用户名",
     passwordPlaceholder: "密码",
     signingIn: "正在登录...",
     signIn: "登录",
