@@ -156,8 +156,13 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           username: null,
           isAdmin: false,
-          error: null
+          error: null,
+          lastAuthCheck: null,
         })
+        // Fully remove persisted auth data from localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth-storage')
+        }
       },
 
       checkAuth: async () => {
