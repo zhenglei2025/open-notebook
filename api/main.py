@@ -278,6 +278,11 @@ app.include_router(admin_users_router, prefix="/api", tags=["admin"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(search.router, prefix="/api", tags=["search"])
+
+# Deep Research router
+from api.routers.deep_research import router as deep_research_router
+
+app.include_router(deep_research_router, prefix="/api", tags=["deep-research"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(transformations.router, prefix="/api", tags=["transformations"])
 app.include_router(notes.router, prefix="/api", tags=["notes"])
