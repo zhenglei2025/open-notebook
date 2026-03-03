@@ -3,6 +3,7 @@
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { queryClient } from '@/lib/api/query-client'
 
 export function useAuth() {
   const router = useRouter()
@@ -41,6 +42,8 @@ export function useAuth() {
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password)
     if (success) {
+      // Clear any cached data from previous user session
+      queryClient.clear()
       // Check if there's a stored redirect path
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
@@ -55,6 +58,8 @@ export function useAuth() {
 
   const handleLogout = () => {
     logout()
+    // Clear all React Query cached data to prevent stale data from showing for the next user
+    queryClient.clear()
     router.push('/login')
   }
 
