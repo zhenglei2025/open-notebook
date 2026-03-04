@@ -73,6 +73,7 @@ class EvaluationResult(BaseModel):
 class DeepResearchState(TypedDict):
     question: str
     notebook_id: Optional[str]  # Scope search to this notebook
+    job_id: Optional[str]  # Persistent job record ID
     outline: Optional[List[Dict[str, Any]]]  # List of section dicts
     current_section_index: int
     section_search_count: int
@@ -151,6 +152,24 @@ def _emit_event(state: DeepResearchState, event_type: str, data: Dict[str, Any])
     """Create an SSE event and append to events list."""
     event = {"type": event_type, **data}
     return state.get("events", []) + [event]
+
+
+async def _update_job(state: DeepResearchState, updates: dict) -> None:
+    """Persist job state to the deep_research_job record in the user's DB."""
+    job_id = state.get("job_id")
+    if not job_id:
+        return
+    try:
+        set_clauses = []
+        params: Dict[str, Any] = {"job_id": ensure_record_id(job_id)}
+        for key, value in updates.items():
+            set_clauses.append(f"{key} = ${key}")
+            params[key] = value
+        set_clauses.append("updated = time::now()")
+        query = f"UPDATE $job_id SET {', '.join(set_clauses)}"
+        await repo_query(query, params)
+    except Exception as e:
+        logger.warning(f"Failed to update deep research job {job_id}: {e}")
 
 
 async def _notebook_vector_search(
@@ -238,7 +257,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
 
         logger.info(f"Deep Research: planned {len(sections)} sections")
 
-        return {
+        result = {
             "outline": sections,
             "current_section_index": 0,
             "section_search_count": 0,
@@ -251,6 +270,8 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
                 "reasoning": outline.reasoning,
             }),
         }
+        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -297,7 +318,7 @@ async def search_section(state: DeepResearchState, config: RunnableConfig) -> di
             f"found {new_result_count} new results, total {len(all_results)}"
         )
 
-        return {
+        result = {
             "section_search_results": all_results,
             "section_search_count": search_count + 1,
             "status": f"Searching: {section['title']} (attempt {search_count + 1})",
@@ -309,6 +330,8 @@ async def search_section(state: DeepResearchState, config: RunnableConfig) -> di
                 "total_results": len(all_results),
             }),
         }
+        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -333,7 +356,7 @@ async def evaluate_material(state: DeepResearchState, config: RunnableConfig) ->
         # If no results found, mark as sufficient to avoid infinite loop
         if not results:
             logger.info(f"Deep Research: no results for '{section['title']}', moving to write")
-            return {
+            result_no_results = {
                 "is_material_sufficient": True,
                 "status": f"No materials found for: {section['title']}",
                 "events": _emit_event(state, "evaluate", {
@@ -343,6 +366,8 @@ async def evaluate_material(state: DeepResearchState, config: RunnableConfig) ->
                     "reason": "No search results available",
                 }),
             }
+            await _update_job(state, {"status": result_no_results["status"], "events": result_no_results["events"]})
+            return result_no_results
 
         parser = PydanticOutputParser(pydantic_object=EvaluationResult)
         prompt = Prompter(prompt_template="deep_research/evaluate", parser=parser).render(
@@ -379,7 +404,7 @@ async def evaluate_material(state: DeepResearchState, config: RunnableConfig) ->
             f"sufficient={is_sufficient}, reason={evaluation.reason}"
         )
 
-        return {
+        result = {
             "section_search_results": filtered_results,
             "is_material_sufficient": is_sufficient,
             "current_queries": new_queries,
@@ -394,6 +419,8 @@ async def evaluate_material(state: DeepResearchState, config: RunnableConfig) ->
                 "new_queries": new_queries,
             }),
         }
+        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -436,7 +463,7 @@ async def write_section(state: DeepResearchState, config: RunnableConfig) -> dic
 
         logger.info(f"Deep Research: wrote section '{section['title']}' ({len(draft)} chars)")
 
-        return {
+        result = {
             "section_drafts": drafts,
             "status": f"Written: {section['title']}",
             "events": _emit_event(state, "write_done", {
@@ -446,6 +473,8 @@ async def write_section(state: DeepResearchState, config: RunnableConfig) -> dic
                 "preview": draft[:200] + "..." if len(draft) > 200 else draft,
             }),
         }
+        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -491,7 +520,7 @@ async def summarize_section(state: DeepResearchState, config: RunnableConfig) ->
 
         logger.info(f"Deep Research: summarized '{section['title']}': {summary[:80]}...")
 
-        return {
+        result = {
             "section_summaries": summaries,
             "current_section_index": next_idx,
             "section_search_count": 0,
@@ -505,6 +534,8 @@ async def summarize_section(state: DeepResearchState, config: RunnableConfig) ->
                 "summary": summary,
             }),
         }
+        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -545,13 +576,19 @@ async def compile_report(state: DeepResearchState, config: RunnableConfig) -> di
 
         logger.info(f"Deep Research: compiled final report ({len(final_report)} chars)")
 
-        return {
+        result = {
             "final_report": final_report,
-            "status": "Complete",
+            "status": "completed",
             "events": _emit_event(state, "complete", {
                 "report_length": len(final_report),
             }),
         }
+        await _update_job(state, {
+            "status": "completed",
+            "events": result["events"],
+            "final_report": final_report,
+        })
+        return result
     except OpenNotebookError:
         raise
     except Exception as e:

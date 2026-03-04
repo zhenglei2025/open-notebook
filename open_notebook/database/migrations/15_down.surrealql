@@ -1,0 +1,2 @@
+-- Rollback: remove deep_research_job table
+REMOVE TABLE IF EXISTS deep_research_job;

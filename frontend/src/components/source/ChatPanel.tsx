@@ -23,7 +23,7 @@ import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { startDeepResearch, DeepResearchEvent } from '@/lib/api/deep-research'
+import { startDeepResearch, getDeepResearchStatus, getActiveDeepResearch, DeepResearchEvent } from '@/lib/api/deep-research'
 import { DeepResearchProgress } from './DeepResearchProgress'
 
 interface NotebookContextStats {
@@ -91,31 +91,119 @@ export function ChatPanel({
   const [deepResearchEvents, setDeepResearchEvents] = useState<DeepResearchEvent[]>([])
   const [deepResearchReport, setDeepResearchReport] = useState<string | null>(null)
   const [deepResearchError, setDeepResearchError] = useState<string | null>(null)
+  const [deepResearchJobId, setDeepResearchJobId] = useState<string | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const eventsCursorRef = useRef(0)
+
+  // Stop polling helper
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }, [])
+
+  // Poll for job status
+  const pollJobStatus = useCallback(async (jobId: string) => {
+    try {
+      const status = await getDeepResearchStatus(jobId, eventsCursorRef.current)
+
+      // Append new events
+      if (status.events && status.events.length > 0) {
+        setDeepResearchEvents(prev => [...prev, ...status.events])
+        eventsCursorRef.current += status.events.length
+      }
+
+      // Check completion
+      if (status.status === 'completed') {
+        setDeepResearchRunning(false)
+        if (status.final_report) {
+          setDeepResearchReport(status.final_report)
+        }
+        stopPolling()
+      } else if (status.status === 'failed') {
+        setDeepResearchRunning(false)
+        setDeepResearchError(status.error || 'Deep research failed')
+        toast.error(status.error || 'Deep research failed')
+        stopPolling()
+      }
+    } catch (e) {
+      console.warn('Failed to poll deep research status:', e)
+    }
+  }, [stopPolling])
+
+  // Start polling for a job
+  const startPolling = useCallback((jobId: string) => {
+    stopPolling()
+    pollingRef.current = setInterval(() => pollJobStatus(jobId), 2000)
+    // Also poll immediately
+    pollJobStatus(jobId)
+  }, [stopPolling, pollJobStatus])
+
+  // Check for active job on mount (resume after navigation)
+  useEffect(() => {
+    if (!notebookId) return
+    let cancelled = false
+
+    const checkActiveJob = async () => {
+      try {
+        console.log('[DeepResearch] Checking active job for notebook:', notebookId)
+        const active = await getActiveDeepResearch(notebookId)
+        console.log('[DeepResearch] Active job result:', active)
+        if (cancelled || !active) return
+
+        if (active.status === 'completed') {
+          // Show completed result
+          console.log('[DeepResearch] Showing completed job:', active.job_id)
+          setDeepResearchMode(true)
+          setDeepResearchEvents(active.events || [])
+          if (active.final_report) {
+            setDeepResearchReport(active.final_report)
+          }
+          setDeepResearchJobId(active.job_id)
+        } else if (active.status !== 'failed') {
+          // Any status other than 'completed' or 'failed' means still running
+          // (status gets overwritten with step descriptions like "Outlined 5 sections")
+          console.log('[DeepResearch] Resuming running job:', active.job_id, 'status:', active.status)
+          setDeepResearchMode(true)
+          setDeepResearchRunning(true)
+          setDeepResearchJobId(active.job_id)
+          setDeepResearchEvents(active.events || [])
+          eventsCursorRef.current = (active.events || []).length
+          startPolling(active.job_id)
+        }
+      } catch (e) {
+        console.error('[DeepResearch] Error checking active job:', e)
+      }
+    }
+
+    checkActiveJob()
+    return () => { cancelled = true; stopPolling() }
+  }, [notebookId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
 
   const handleDeepResearch = useCallback(async (question: string) => {
     setDeepResearchRunning(true)
     setDeepResearchEvents([])
     setDeepResearchReport(null)
     setDeepResearchError(null)
+    eventsCursorRef.current = 0
 
     try {
-      const report = await startDeepResearch(
-        question,
-        notebookId,
-        modelOverride,
-        (event) => {
-          setDeepResearchEvents(prev => [...prev, event])
-        },
-      )
-      setDeepResearchReport(report)
+      const job = await startDeepResearch(question, notebookId, modelOverride)
+      setDeepResearchJobId(job.job_id)
+      startPolling(job.job_id)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Deep research failed'
       setDeepResearchError(msg)
-      toast.error(msg)
-    } finally {
       setDeepResearchRunning(false)
+      toast.error(msg)
     }
-  }, [modelOverride])
+  }, [modelOverride, notebookId, startPolling])
 
   const handleReferenceClick = (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'

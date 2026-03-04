@@ -1,0 +1,2 @@
+-- Deep Research Job table for persistent background research
+DEFINE TABLE IF NOT EXISTS deep_research_job SCHEMALESS;

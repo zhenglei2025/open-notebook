@@ -1,9 +1,9 @@
 /**
  * Deep Research API client.
- * Uses SSE (Server-Sent Events) for streaming progress.
+ * Uses polling for background job status.
  */
 
-import { getApiUrl } from '@/lib/config'
+import apiClient from './client'
 
 export interface DeepResearchEvent {
     type: 'outline' | 'search_done' | 'evaluate' | 'write_done' | 'summarize_done' | 'complete' | 'report' | 'error' | 'done'
@@ -34,79 +34,65 @@ export interface DeepResearchEvent {
     message?: string
 }
 
+export interface DeepResearchJobResponse {
+    job_id: string
+    status: string
+    question: string
+}
+
+export interface DeepResearchStatusResponse {
+    job_id: string
+    status: string
+    question: string
+    events: DeepResearchEvent[]
+    final_report: string | null
+    error: string | null
+}
+
+/**
+ * Start a deep research job (returns immediately with job_id).
+ */
 export async function startDeepResearch(
     question: string,
     notebookId?: string,
     modelId?: string,
-    onEvent?: (event: DeepResearchEvent) => void,
-): Promise<string> {
-    const apiUrl = await getApiUrl()
-    const url = `${apiUrl}/api/deep-research`
-
-    // Get auth token
-    let token = ''
-    if (typeof window !== 'undefined') {
-        const authStorage = localStorage.getItem('auth-storage')
-        if (authStorage) {
-            try {
-                const { state } = JSON.parse(authStorage)
-                if (state?.token) token = state.token
-            } catch { /* ignore */ }
-        }
-    }
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ question, notebook_id: notebookId || null, model_id: modelId || null }),
+): Promise<DeepResearchJobResponse> {
+    const response = await apiClient.post<DeepResearchJobResponse>('/deep-research', {
+        question,
+        notebook_id: notebookId || null,
+        model_id: modelId || null,
     })
+    return response.data
+}
 
-    if (!response.ok) {
-        throw new Error(`Deep research failed: ${response.statusText}`)
+/**
+ * Get the current status and events of a deep research job.
+ * Uses events_after cursor so only new events are returned.
+ */
+export async function getDeepResearchStatus(
+    jobId: string,
+    eventsAfter: number = 0,
+): Promise<DeepResearchStatusResponse> {
+    const response = await apiClient.get<DeepResearchStatusResponse>(
+        `/deep-research/${encodeURIComponent(jobId)}`,
+        { params: { events_after: eventsAfter } },
+    )
+    return response.data
+}
+
+/**
+ * Get the most recent deep research job for a notebook (if any).
+ * Used to resume display when navigating back.
+ */
+export async function getActiveDeepResearch(
+    notebookId: string,
+): Promise<DeepResearchStatusResponse | null> {
+    try {
+        const response = await apiClient.get<DeepResearchStatusResponse | null>(
+            `/deep-research/active/${encodeURIComponent(notebookId)}`,
+        )
+        return response.data
+    } catch {
+        return null
     }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('No response body')
-
-    const decoder = new TextDecoder()
-    let finalReport = ''
-    let buffer = ''
-
-    while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        // Parse SSE events from buffer
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        for (const line of lines) {
-            if (line.startsWith('data: ')) {
-                try {
-                    const event: DeepResearchEvent = JSON.parse(line.slice(6))
-                    onEvent?.(event)
-
-                    if (event.type === 'report' && event.content) {
-                        finalReport = event.content
-                    }
-                    if (event.type === 'error') {
-                        throw new Error(event.message || 'Deep research failed')
-                    }
-                } catch (e) {
-                    if (e instanceof Error && e.message !== 'Deep research failed') {
-                        console.warn('Failed to parse SSE event:', line, e)
-                    } else {
-                        throw e
-                    }
-                }
-            }
-        }
-    }
-
-    return finalReport
 }
