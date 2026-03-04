@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
 from open_notebook.ai.models import model_manager
-from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query
+from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query, set_current_user_db
 from open_notebook.exceptions import ConfigurationError
 from open_notebook.domain.notebook import Note, Source, SourceInsight
 from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
@@ -36,6 +36,7 @@ class RebuildEmbeddingsInput(CommandInput):
     include_sources: bool = True
     include_notes: bool = True
     include_insights: bool = True
+    user_db_name: Optional[str] = None
 
 
 class RebuildEmbeddingsOutput(CommandOutput):
@@ -61,6 +62,7 @@ class CreateInsightInput(CommandInput):
     source_id: str
     insight_type: str
     content: str
+    user_db_name: Optional[str] = None
 
 
 class CreateInsightOutput(CommandOutput):
@@ -76,6 +78,7 @@ class EmbedNoteInput(CommandInput):
     """Input for embedding a single note."""
 
     note_id: str
+    user_db_name: Optional[str] = None
 
 
 class EmbedNoteOutput(CommandOutput):
@@ -91,6 +94,7 @@ class EmbedInsightInput(CommandInput):
     """Input for embedding a single source insight."""
 
     insight_id: str
+    user_db_name: Optional[str] = None
 
 
 class EmbedInsightOutput(CommandOutput):
@@ -106,6 +110,7 @@ class EmbedSourceInput(CommandInput):
     """Input for embedding a source (creates multiple chunk embeddings)."""
 
     source_id: str
+    user_db_name: Optional[str] = None
 
 
 class EmbedSourceOutput(CommandOutput):
@@ -148,6 +153,9 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
 
     try:
         logger.info(f"Starting embedding for note: {input_data.note_id}")
@@ -240,6 +248,9 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
 
     try:
         logger.info(f"Starting embedding for insight: {input_data.insight_id}")
@@ -337,6 +348,9 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
 
     try:
         logger.info(f"Starting embedding for source: {input_data.source_id}")
@@ -474,6 +488,9 @@ async def create_insight_command(
     """
     start_time = time.time()
 
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
+
     try:
         logger.info(
             f"Creating insight for source {input_data.source_id}: "
@@ -507,7 +524,7 @@ async def create_insight_command(
         submit_command(
             "open_notebook",
             "embed_insight",
-            {"insight_id": insight_id},
+            {"insight_id": insight_id, "user_db_name": input_data.user_db_name},
         )
         logger.debug(f"Submitted embed_insight command for {insight_id}")
 
@@ -641,6 +658,9 @@ async def rebuild_embeddings_command(
     """
     start_time = time.time()
 
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
+
     try:
         logger.info("=" * 60)
         logger.info(f"Starting embedding rebuild with mode={input_data.mode}")
@@ -694,7 +714,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_source",
-                    {"source_id": source_id},
+                    {"source_id": source_id, "user_db_name": input_data.user_db_name},
                 )
                 sources_submitted += 1
 
@@ -714,7 +734,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_note",
-                    {"note_id": note_id},
+                    {"note_id": note_id, "user_db_name": input_data.user_db_name},
                 )
                 notes_submitted += 1
 
@@ -734,7 +754,7 @@ async def rebuild_embeddings_command(
                 submit_command(
                     "open_notebook",
                     "embed_insight",
-                    {"insight_id": insight_id},
+                    {"insight_id": insight_id, "user_db_name": input_data.user_db_name},
                 )
                 insights_submitted += 1
 

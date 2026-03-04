@@ -10,7 +10,7 @@ from api.models import (
     RebuildStats,
     RebuildStatusResponse,
 )
-from open_notebook.database.repository import repo_query
+from open_notebook.database.repository import get_current_user_db, repo_query
 
 router = APIRouter()
 
@@ -101,6 +101,7 @@ async def start_rebuild(request: RebuildRequest):
                 "include_sources": request.include_sources,
                 "include_notes": request.include_notes,
                 "include_insights": request.include_insights,
+                "user_db_name": get_current_user_db(),
             },
         )
 

@@ -30,7 +30,7 @@ from api.models import (
 )
 from commands.source_commands import SourceProcessingInput
 from open_notebook.config import UPLOADS_FOLDER
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import ensure_record_id, get_current_user_db, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
@@ -376,6 +376,7 @@ async def create_source(
                     notebook_ids=source_data.notebooks,
                     transformations=transformation_ids,
                     embed=source_data.embed,
+                    user_db_name=get_current_user_db(),
                 )
 
                 command_id = await CommandService.submit_command_job(
@@ -451,6 +452,7 @@ async def create_source(
                     notebook_ids=source_data.notebooks,
                     transformations=transformation_ids,
                     embed=source_data.embed,
+                    user_db_name=get_current_user_db(),
                 )
 
                 # Run in thread pool to avoid blocking the event loop
@@ -995,6 +997,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
             {
                 "source_id": source_id,
                 "transformation_id": request.transformation_id,
+                "user_db_name": get_current_user_db(),
             },
         )
         logger.info(

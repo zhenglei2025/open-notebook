@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
 from open_notebook.config import DATA_FOLDER
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import ensure_record_id, repo_query, set_current_user_db
 from open_notebook.podcasts.models import (
     EpisodeProfile,
     PodcastEpisode,
@@ -39,6 +39,7 @@ class PodcastGenerationInput(CommandInput):
     episode_name: str
     content: str
     briefing_suffix: Optional[str] = None
+    user_db_name: Optional[str] = None
 
 
 class PodcastGenerationOutput(CommandOutput):
@@ -59,6 +60,9 @@ async def generate_podcast_command(
     Real podcast generation using podcast-creator library with Episode Profiles
     """
     start_time = time.time()
+
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
 
     try:
         logger.info(

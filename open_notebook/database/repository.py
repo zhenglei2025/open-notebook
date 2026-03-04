@@ -8,6 +8,48 @@ from surrealdb import AsyncSurreal, RecordID  # type: ignore
 
 T = TypeVar("T", Dict[str, Any], List[Dict[str, Any]])
 
+# Module-level fallback for worker processes where ContextVar may not propagate
+# across asyncio context boundaries. This is safe because the surreal_commands
+# worker processes commands sequentially (one at a time).
+_worker_user_db: Optional[str] = None
+
+
+def get_current_user_db() -> Optional[str]:
+    """Get the current user's database name from context.
+
+    Used when submitting commands to propagate user context to workers.
+    Returns None if no user context is set (e.g., in single-user mode).
+    """
+    try:
+        from api.user_auth import current_user_db
+        value = current_user_db.get()
+        if value:
+            return value
+    except Exception:
+        pass
+    return _worker_user_db
+
+
+def set_current_user_db(db_name: Optional[str]) -> None:
+    """Set the current user's database name in context.
+
+    Used by command handlers to restore user context in worker processes.
+    Sets both the ContextVar (for FastAPI request context) and the module-level
+    fallback (for worker processes where ContextVar may not propagate).
+    """
+    global _worker_user_db
+
+    if db_name:
+        _worker_user_db = db_name
+        try:
+            from api.user_auth import current_user_db
+            current_user_db.set(db_name)
+        except Exception:
+            pass
+        logger.info(f"set_current_user_db: set to '{db_name}'")
+    else:
+        logger.warning("set_current_user_db: called with None/empty db_name")
+
 
 def get_database_url():
     """Get database URL with backward compatibility"""
@@ -59,11 +101,15 @@ async def db_connection():
 
     # Multi-user: use per-user database if set by JWT middleware
     user_db = current_user_db.get()
+    # Fallback to module-level variable (set by worker commands)
+    if not user_db:
+        user_db = _worker_user_db
     if user_db:
         database = user_db
     else:
         database = os.environ.get("SURREAL_DATABASE")
 
+    logger.info(f"db_connection: using database='{database}' (contextvar={current_user_db.get()}, worker_fallback={_worker_user_db})")
     await db.use(os.environ.get("SURREAL_NAMESPACE"), database)
     try:
         yield db

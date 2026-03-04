@@ -5,7 +5,7 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.database.repository import ensure_record_id
+from open_notebook.database.repository import ensure_record_id, set_current_user_db
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError
@@ -35,6 +35,7 @@ class SourceProcessingInput(CommandInput):
     notebook_ids: List[str]
     transformations: List[str]
     embed: bool
+    user_db_name: Optional[str] = None
 
 
 class SourceProcessingOutput(CommandOutput):
@@ -66,8 +67,12 @@ async def process_source_command(
     """
     start_time = time.time()
 
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
+
     try:
         logger.info(f"Starting source processing for source: {input_data.source_id}")
+        logger.info(f"User DB name: {input_data.user_db_name}")
         logger.info(f"Notebook IDs: {input_data.notebook_ids}")
         logger.info(f"Transformations: {input_data.transformations}")
         logger.info(f"Embed: {input_data.embed}")
@@ -166,6 +171,7 @@ class RunTransformationInput(CommandInput):
 
     source_id: str
     transformation_id: str
+    user_db_name: Optional[str] = None
 
 
 class RunTransformationOutput(CommandOutput):
@@ -210,6 +216,9 @@ async def run_transformation_command(
     - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
+
+    # Restore user database context in worker
+    set_current_user_db(input_data.user_db_name)
 
     try:
         logger.info(

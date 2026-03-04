@@ -28,7 +28,14 @@ async def provision_langchain_model(
         model = await model_manager.get_default_model("large_context", **kwargs)
     elif model_id:
         selection_reason = f"explicit model_id={model_id}"
-        model = await model_manager.get_model(model_id, **kwargs)
+        try:
+            model = await model_manager.get_model(model_id, **kwargs)
+        except Exception:
+            logger.warning(
+                f"Model override {model_id} not found, falling back to default for {default_type}"
+            )
+            selection_reason = f"fallback to default for type={default_type} (override {model_id} not found)"
+            model = await model_manager.get_default_model(default_type, **kwargs)
     else:
         selection_reason = f"default for type={default_type}"
         model = await model_manager.get_default_model(default_type, **kwargs)

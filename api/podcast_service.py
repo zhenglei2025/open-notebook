@@ -5,6 +5,7 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import get_command_status, submit_command
 
+from open_notebook.database.repository import get_current_user_db
 from open_notebook.domain.notebook import Notebook
 from open_notebook.podcasts.models import EpisodeProfile, PodcastEpisode, SpeakerProfile
 
@@ -93,7 +94,10 @@ class PodcastService:
                 raise ValueError("Podcast commands not available")
 
             # Submit command to surreal-commands
-            job_id = submit_command("open_notebook", "generate_podcast", command_args)
+            job_id = submit_command("open_notebook", "generate_podcast", {
+                **command_args,
+                "user_db_name": get_current_user_db(),
+            })
 
             # Convert RecordID to string if needed
             if not job_id:

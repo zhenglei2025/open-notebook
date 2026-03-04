@@ -30,10 +30,10 @@ interface ModelSelectorProps {
   disabled?: boolean
 }
 
-export function ModelSelector({ 
-  currentModel, 
+export function ModelSelector({
+  currentModel,
   onModelChange,
-  disabled = false 
+  disabled = false
 }: ModelSelectorProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -55,6 +55,17 @@ export function ModelSelector({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [models])
 
+  // Auto-clear stale model override: if currentModel doesn't exist in available models,
+  // reset to default so user automatically gets admin-configured default model
+  useEffect(() => {
+    if (currentModel && languageModels.length > 0) {
+      const modelExists = languageModels.some(model => model.id === currentModel)
+      if (!modelExists) {
+        onModelChange(undefined)
+      }
+    }
+  }, [currentModel, languageModels, onModelChange])
+
   const defaultModel = useMemo(() => {
     if (!defaults?.default_chat_model) return undefined
     return languageModels.find(model => model.id === defaults.default_chat_model)
@@ -62,7 +73,9 @@ export function ModelSelector({
 
   const currentModelName = useMemo(() => {
     if (currentModel) {
-      return languageModels.find(model => model.id === currentModel)?.name || currentModel
+      const found = languageModels.find(model => model.id === currentModel)
+      if (found) return found.name
+      // Stale model ID — show default name instead of raw ID
     }
     if (defaultModel) {
       return defaultModel.name
@@ -84,8 +97,8 @@ export function ModelSelector({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
           disabled={disabled}
           className="gap-2"
@@ -117,8 +130,8 @@ export function ModelSelector({
                 <SelectItem value="default">
                   <div className="flex items-center justify-between w-full">
                     <span>
-                      {defaultModel 
-                        ? `${t.common.default} (${defaultModel.name})` 
+                      {defaultModel
+                        ? `${t.common.default} (${defaultModel.name})`
                         : t.transformations.systemDefault}
                     </span>
                     {defaultModel?.provider && (
@@ -151,7 +164,7 @@ export function ModelSelector({
             <div className="rounded-lg bg-muted p-3">
               <p className="text-sm text-muted-foreground">
                 {t.transformations.sessionUseReplacement.replace(
-                  '{name}', 
+                  '{name}',
                   languageModels.find(m => m.id === selectedModel)?.name || selectedModel
                 )}
               </p>

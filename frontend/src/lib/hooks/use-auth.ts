@@ -60,6 +60,8 @@ export function useAuth() {
     logout()
     // Clear all React Query cached data to prevent stale data from showing for the next user
     queryClient.clear()
+    // Clear redirect path so next login goes to /notebooks, not the previous user's page
+    sessionStorage.removeItem('redirectAfterLogin')
     router.push('/login')
   }
 

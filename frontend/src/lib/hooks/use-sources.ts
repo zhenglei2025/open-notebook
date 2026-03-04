@@ -52,6 +52,17 @@ export function useNotebookSources(notebookId: string) {
     enabled: !!notebookId,
     staleTime: 5 * 1000,
     refetchOnWindowFocus: true,
+    // Auto-refresh every 3s when any source is still processing
+    refetchInterval: (query) => {
+      const pages = query.state.data?.pages
+      if (!pages) return false
+      const hasProcessing = pages.some(page =>
+        page.sources.some((s: SourceListResponse & { command_id?: string }) =>
+          s.title === 'Processing...' || (!s.title && s.command_id)
+        )
+      )
+      return hasProcessing ? 3000 : false
+    },
   })
 
   // Flatten all pages into a single array (memoized to prevent infinite re-renders)
@@ -101,10 +112,18 @@ export function useCreateSource() {
             queryKey: QUERY_KEYS.sources(notebookId),
             refetchType: 'active' // Refetch active queries immediately
           })
+          queryClient.invalidateQueries({
+            queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
+            refetchType: 'active'
+          })
         })
       } else if (variables.notebook_id) {
         queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.sources(variables.notebook_id),
+          refetchType: 'active'
+        })
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.sourcesInfinite(variables.notebook_id),
           refetchType: 'active'
         })
       }
@@ -201,8 +220,12 @@ export function useFileUpload() {
     mutationFn: ({ file, notebookId }: { file: File; notebookId: string }) =>
       sourcesApi.upload(file, notebookId),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: QUERY_KEYS.sources(variables.notebookId) 
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.sources(variables.notebookId)
+      })
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.sourcesInfinite(variables.notebookId),
+        refetchType: 'active'
       })
       toast({
         title: t.common.success,

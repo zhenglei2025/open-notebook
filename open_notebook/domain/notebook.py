@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from surreal_commands import submit_command
 from surrealdb import RecordID
 
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import ensure_record_id, get_current_user_db, repo_query
 from open_notebook.domain.base import ObjectModel
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 
@@ -436,7 +436,7 @@ class Source(ObjectModel):
             command_id = submit_command(
                 "open_notebook",
                 "embed_source",
-                {"source_id": str(self.id)},
+                {"source_id": str(self.id), "user_db_name": get_current_user_db()},
             )
 
             command_id_str = str(command_id)
@@ -491,6 +491,7 @@ class Source(ObjectModel):
                     "source_id": str(self.id),
                     "insight_type": insight_type,
                     "content": content,
+                    "user_db_name": get_current_user_db(),
                 },
             )
             logger.info(
@@ -585,7 +586,7 @@ class Note(ObjectModel):
             command_id = submit_command(
                 "open_notebook",
                 "embed_note",
-                {"note_id": str(self.id)},
+                {"note_id": str(self.id), "user_db_name": get_current_user_db()},
             )
             logger.debug(f"Submitted embed_note command {command_id} for {self.id}")
             return command_id
