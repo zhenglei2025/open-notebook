@@ -21,7 +21,7 @@ from typing import Any, ClassVar, Dict, List, Optional
 from loguru import logger
 from pydantic import SecretStr
 
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import admin_repo_query, ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel
 from open_notebook.utils.encryption import decrypt_value, encrypt_value
 
@@ -99,7 +99,7 @@ class Credential(ObjectModel):
     @classmethod
     async def get_by_provider(cls, provider: str) -> List["Credential"]:
         """Get all credentials for a provider."""
-        results = await repo_query(
+        results = await admin_repo_query(
             "SELECT * FROM credential WHERE string::lowercase(provider) = string::lowercase($provider) ORDER BY created ASC",
             {"provider": provider},
         )
@@ -114,8 +114,14 @@ class Credential(ObjectModel):
 
     @classmethod
     async def get(cls, id: str) -> "Credential":
-        """Override get() to handle api_key decryption."""
-        instance = await super().get(id)
+        """Override get() to handle api_key decryption. Reads from admin DB."""
+        result = await admin_repo_query(
+            "SELECT * FROM $id", {"id": ensure_record_id(id)}
+        )
+        if not result:
+            from open_notebook.exceptions import NotFoundError
+            raise NotFoundError(f"Credential with id {id} not found")
+        instance = cls(**result[0])
         # Pydantic auto-wraps the raw DB string in SecretStr, so we need
         # to extract, decrypt, and re-wrap regardless of type.
         if instance.api_key:
@@ -130,8 +136,13 @@ class Credential(ObjectModel):
 
     @classmethod
     async def get_all(cls, order_by=None) -> List["Credential"]:
-        """Override get_all() to handle api_key decryption."""
-        instances = await super().get_all(order_by=order_by)
+        """Override get_all() to handle api_key decryption. Reads from admin DB."""
+        if order_by:
+            query = f"SELECT * FROM {cls.table_name} ORDER BY {order_by}"
+        else:
+            query = f"SELECT * FROM {cls.table_name}"
+        result = await admin_repo_query(query)
+        instances = [cls(**obj) for obj in result]
         for instance in instances:
             if instance.api_key:
                 raw = (
@@ -149,7 +160,7 @@ class Credential(ObjectModel):
             return []
         from open_notebook.ai.models import Model
 
-        results = await repo_query(
+        results = await admin_repo_query(
             "SELECT * FROM model WHERE credential = $cred_id",
             {"cred_id": ensure_record_id(self.id)},
         )

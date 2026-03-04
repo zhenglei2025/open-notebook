@@ -20,7 +20,7 @@ NEVER returns actual API key values - only metadata.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from pydantic import SecretStr
 
@@ -49,6 +49,7 @@ from api.models import (
     UpdateCredentialRequest,
 )
 from open_notebook.domain.credential import Credential
+from api.user_auth import require_admin
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
@@ -130,8 +131,8 @@ async def list_credentials_by_provider(provider: str):
 
 
 @router.post("", response_model=CredentialResponse, status_code=201)
-async def create_credential(request: CreateCredentialRequest):
-    """Create a new credential."""
+async def create_credential(request: Request, req: CreateCredentialRequest, _=Depends(require_admin)):
+    """Create a new credential. Admin only."""
     try:
         require_encryption_key()
     except ValueError as e:
@@ -139,31 +140,31 @@ async def create_credential(request: CreateCredentialRequest):
 
     # Validate all URL fields
     for url_field in [
-        request.base_url, request.endpoint, request.endpoint_llm,
-        request.endpoint_embedding, request.endpoint_stt, request.endpoint_tts,
+        req.base_url, req.endpoint, req.endpoint_llm,
+        req.endpoint_embedding, req.endpoint_stt, req.endpoint_tts,
     ]:
         if url_field:
             try:
-                validate_url(url_field, request.provider)
+                validate_url(url_field, req.provider)
             except ValueError as e:
                 raise _handle_value_error(e)
 
     try:
         cred = Credential(
-            name=request.name,
-            provider=request.provider.lower(),
-            modalities=request.modalities,
-            api_key=SecretStr(request.api_key) if request.api_key else None,
-            base_url=request.base_url,
-            endpoint=request.endpoint,
-            api_version=request.api_version,
-            endpoint_llm=request.endpoint_llm,
-            endpoint_embedding=request.endpoint_embedding,
-            endpoint_stt=request.endpoint_stt,
-            endpoint_tts=request.endpoint_tts,
-            project=request.project,
-            location=request.location,
-            credentials_path=request.credentials_path,
+            name=req.name,
+            provider=req.provider.lower(),
+            modalities=req.modalities,
+            api_key=SecretStr(req.api_key) if req.api_key else None,
+            base_url=req.base_url,
+            endpoint=req.endpoint,
+            api_version=req.api_version,
+            endpoint_llm=req.endpoint_llm,
+            endpoint_embedding=req.endpoint_embedding,
+            endpoint_stt=req.endpoint_stt,
+            endpoint_tts=req.endpoint_tts,
+            project=req.project,
+            location=req.location,
+            credentials_path=req.credentials_path,
         )
         await cred.save()
         return credential_to_response(cred, 0)
@@ -186,8 +187,8 @@ async def get_credential(credential_id: str):
 
 
 @router.put("/{credential_id}", response_model=CredentialResponse)
-async def update_credential(credential_id: str, request: UpdateCredentialRequest):
-    """Update an existing credential."""
+async def update_credential(request: Request, credential_id: str, req: UpdateCredentialRequest, _=Depends(require_admin)):
+    """Update an existing credential. Admin only."""
     try:
         require_encryption_key()
     except ValueError as e:
@@ -195,8 +196,8 @@ async def update_credential(credential_id: str, request: UpdateCredentialRequest
 
     # Validate all URL fields being updated
     for url_field in [
-        request.base_url, request.endpoint, request.endpoint_llm,
-        request.endpoint_embedding, request.endpoint_stt, request.endpoint_tts,
+        req.base_url, req.endpoint, req.endpoint_llm,
+        req.endpoint_embedding, req.endpoint_stt, req.endpoint_tts,
     ]:
         if url_field:
             try:
@@ -207,32 +208,32 @@ async def update_credential(credential_id: str, request: UpdateCredentialRequest
     try:
         cred = await Credential.get(credential_id)
 
-        if request.name is not None:
-            cred.name = request.name
-        if request.modalities is not None:
-            cred.modalities = request.modalities
-        if request.api_key is not None:
-            cred.api_key = SecretStr(request.api_key)
-        if request.base_url is not None:
-            cred.base_url = request.base_url or None
-        if request.endpoint is not None:
-            cred.endpoint = request.endpoint or None
-        if request.api_version is not None:
-            cred.api_version = request.api_version or None
-        if request.endpoint_llm is not None:
-            cred.endpoint_llm = request.endpoint_llm or None
-        if request.endpoint_embedding is not None:
-            cred.endpoint_embedding = request.endpoint_embedding or None
-        if request.endpoint_stt is not None:
-            cred.endpoint_stt = request.endpoint_stt or None
-        if request.endpoint_tts is not None:
-            cred.endpoint_tts = request.endpoint_tts or None
-        if request.project is not None:
-            cred.project = request.project or None
-        if request.location is not None:
-            cred.location = request.location or None
-        if request.credentials_path is not None:
-            cred.credentials_path = request.credentials_path or None
+        if req.name is not None:
+            cred.name = req.name
+        if req.modalities is not None:
+            cred.modalities = req.modalities
+        if req.api_key is not None:
+            cred.api_key = SecretStr(req.api_key)
+        if req.base_url is not None:
+            cred.base_url = req.base_url or None
+        if req.endpoint is not None:
+            cred.endpoint = req.endpoint or None
+        if req.api_version is not None:
+            cred.api_version = req.api_version or None
+        if req.endpoint_llm is not None:
+            cred.endpoint_llm = req.endpoint_llm or None
+        if req.endpoint_embedding is not None:
+            cred.endpoint_embedding = req.endpoint_embedding or None
+        if req.endpoint_stt is not None:
+            cred.endpoint_stt = req.endpoint_stt or None
+        if req.endpoint_tts is not None:
+            cred.endpoint_tts = req.endpoint_tts or None
+        if req.project is not None:
+            cred.project = req.project or None
+        if req.location is not None:
+            cred.location = req.location or None
+        if req.credentials_path is not None:
+            cred.credentials_path = req.credentials_path or None
 
         await cred.save()
         models = await cred.get_linked_models()
@@ -247,11 +248,13 @@ async def update_credential(credential_id: str, request: UpdateCredentialRequest
 
 @router.delete("/{credential_id}", response_model=CredentialDeleteResponse)
 async def delete_credential(
+    request: Request,
     credential_id: str,
     delete_models: bool = Query(False, description="Also delete linked models"),
     migrate_to: Optional[str] = Query(
         None, description="Migrate linked models to this credential ID"
     ),
+    _=Depends(require_admin),
 ):
     """
     Delete a credential.
@@ -317,8 +320,8 @@ async def test_credential(credential_id: str):
 
 
 @router.post("/{credential_id}/discover", response_model=DiscoverModelsResponse)
-async def discover_models_for_credential(credential_id: str):
-    """Discover available models using this credential's API key."""
+async def discover_models_for_credential(request: Request, credential_id: str, _=Depends(require_admin)):
+    """Discover available models using this credential's API key. Admin only."""
     try:
         cred = await Credential.get(credential_id)
         config = cred.to_esperanto_config()
@@ -346,11 +349,11 @@ async def discover_models_for_credential(credential_id: str):
 
 @router.post("/{credential_id}/register-models", response_model=RegisterModelsResponse)
 async def register_models_for_credential(
-    credential_id: str, request: RegisterModelsRequest
+    request: Request, credential_id: str, req: RegisterModelsRequest, _=Depends(require_admin)
 ):
-    """Register discovered models and link them to this credential."""
+    """Register discovered models and link them to this credential. Admin only."""
     try:
-        result = await register_models(credential_id, request.models)
+        result = await register_models(credential_id, req.models)
         return RegisterModelsResponse(**result)
     except Exception as e:
         logger.error(f"Error registering models for credential {credential_id}: {e}")
@@ -363,8 +366,8 @@ async def register_models_for_credential(
 
 
 @router.post("/migrate-from-provider-config")
-async def migrate_from_provider_config():
-    """Migrate existing ProviderConfig data to individual credential records."""
+async def migrate_from_provider_config(request: Request, _=Depends(require_admin)):
+    """Migrate existing ProviderConfig data to individual credential records. Admin only."""
     try:
         return await svc_migrate_from_provider_config()
     except ValueError as e:
@@ -375,8 +378,8 @@ async def migrate_from_provider_config():
 
 
 @router.post("/migrate-from-env")
-async def migrate_from_env():
-    """Migrate API keys from environment variables to credential records."""
+async def migrate_from_env(request: Request, _=Depends(require_admin)):
+    """Migrate API keys from environment variables to credential records. Admin only."""
     try:
         return await svc_migrate_from_env()
     except ValueError as e:

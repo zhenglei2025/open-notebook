@@ -14,9 +14,9 @@ import os
 import time
 from typing import Optional
 
+from fastapi import HTTPException, Request
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 # ──────────────────────────────────────────────────────────────
@@ -199,6 +199,7 @@ class MultiUserAuthMiddleware(BaseHTTPMiddleware):
         # Also set on request.state for router access
         request.state.user_id = user_id
         request.state.db_name = db_name
+        request.state.is_admin = payload.get("is_admin", False)
 
         try:
             response = await call_next(request)
@@ -207,3 +208,17 @@ class MultiUserAuthMiddleware(BaseHTTPMiddleware):
             # Reset context variables
             current_user_db.reset(token_user_db)
             current_user_id.reset(token_user_id)
+
+
+def require_admin(request: Request):
+    """FastAPI dependency that ensures the current user is an admin.
+
+    Usage:
+        @router.post("/endpoint")
+        async def endpoint(request: Request, _=Depends(require_admin)):
+            ...
+    """
+    is_admin = getattr(request.state, "is_admin", False)
+    user_id = getattr(request.state, "user_id", None)
+    if not is_admin and user_id != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")

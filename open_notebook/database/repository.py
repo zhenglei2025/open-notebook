@@ -91,6 +91,51 @@ async def repo_query(
             raise
 
 
+@asynccontextmanager
+async def admin_db_connection():
+    """Connect to admin database regardless of current user.
+
+    Used for shared resources (models, credentials) that are
+    configured by admin and used by all users.
+    """
+    db = AsyncSurreal(get_database_url())
+    await db.signin(
+        {
+            "username": os.environ.get("SURREAL_USER"),
+            "password": get_database_password(),
+        }
+    )
+    # Always use the admin database (default: open_notebook)
+    admin_database = os.environ.get("SURREAL_DATABASE", "open_notebook")
+    await db.use(os.environ.get("SURREAL_NAMESPACE"), admin_database)
+    try:
+        yield db
+    finally:
+        await db.close()
+
+
+async def admin_repo_query(
+    query_str: str, vars: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """Execute a SurrealQL query against the admin database.
+
+    Use this for reading shared resources (models, credentials, defaults)
+    that are managed by admin but accessible to all users.
+    """
+    async with admin_db_connection() as connection:
+        try:
+            result = parse_record_ids(await connection.query(query_str, vars))
+            if isinstance(result, str):
+                raise RuntimeError(result)
+            return result
+        except RuntimeError as e:
+            logger.debug(str(e))
+            raise
+        except Exception as e:
+            logger.exception(e)
+            raise
+
+
 async def repo_create(table: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new record in the specified table"""
     # Remove 'id' attribute if it exists in data

@@ -3,7 +3,7 @@ import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ from api.models import (
 from open_notebook.domain.credential import Credential
 from open_notebook.ai.connection_tester import test_individual_model
 from open_notebook.ai.key_provider import provision_provider_keys
+from api.user_auth import require_admin
 from open_notebook.ai.model_discovery import (
     discover_provider_models,
     get_provider_model_count,
@@ -191,8 +192,8 @@ async def get_models(
 
 
 @router.post("/models", response_model=ModelResponse)
-async def create_model(model_data: ModelCreate):
-    """Create a new model configuration."""
+async def create_model(request: Request, model_data: ModelCreate, _=Depends(require_admin)):
+    """Create a new model configuration. Admin only."""
     try:
         # Validate model type
         valid_types = ["language", "embedding", "text_to_speech", "speech_to_text"]
@@ -203,9 +204,9 @@ async def create_model(model_data: ModelCreate):
             )
 
         # Check for duplicate model name under the same provider and type (case-insensitive)
-        from open_notebook.database.repository import repo_query
+        from open_notebook.database.repository import admin_repo_query
 
-        existing = await repo_query(
+        existing = await admin_repo_query(
             "SELECT * FROM model WHERE string::lowercase(provider) = $provider AND string::lowercase(name) = $name AND string::lowercase(type) = $type LIMIT 1",
             {
                 "provider": model_data.provider.lower(),
@@ -246,8 +247,8 @@ async def create_model(model_data: ModelCreate):
 
 
 @router.delete("/models/{model_id}")
-async def delete_model(model_id: str):
-    """Delete a model configuration."""
+async def delete_model(request: Request, model_id: str, _=Depends(require_admin)):
+    """Delete a model configuration. Admin only."""
     try:
         model = await Model.get(model_id)
         if not model:
@@ -309,8 +310,8 @@ async def get_default_models():
 
 
 @router.put("/models/defaults", response_model=DefaultModelsResponse)
-async def update_default_models(defaults_data: DefaultModelsResponse):
-    """Update default model assignments."""
+async def update_default_models(request: Request, defaults_data: DefaultModelsResponse, _=Depends(require_admin)):
+    """Update default model assignments. Admin only."""
     try:
         defaults = await DefaultModels.get_instance()
 
@@ -481,7 +482,7 @@ async def get_provider_availability():
 @router.get(
     "/models/discover/{provider}", response_model=List[DiscoveredModelResponse]
 )
-async def discover_models(provider: str):
+async def discover_models(request: Request, provider: str, _=Depends(require_admin)):
     """
     Discover available models from a provider without registering them.
 
@@ -510,7 +511,7 @@ async def discover_models(provider: str):
 
 
 @router.post("/models/sync/{provider}", response_model=ProviderSyncResponse)
-async def sync_models(provider: str):
+async def sync_models(request: Request, provider: str, _=Depends(require_admin)):
     """
     Sync models for a specific provider.
 
@@ -537,7 +538,7 @@ async def sync_models(provider: str):
 
 
 @router.post("/models/sync", response_model=AllProvidersSyncResponse)
-async def sync_all_models():
+async def sync_all_models(request: Request, _=Depends(require_admin)):
     """
     Sync models for all configured providers.
 
@@ -605,9 +606,9 @@ async def get_models_by_provider(provider: str):
     Returns models from the database that belong to the specified provider.
     """
     try:
-        from open_notebook.database.repository import repo_query
+        from open_notebook.database.repository import admin_repo_query
 
-        models = await repo_query(
+        models = await admin_repo_query(
             "SELECT * FROM model WHERE provider = $provider ORDER BY type, name",
             {"provider": provider},
         )
@@ -676,7 +677,7 @@ def _get_preferred_model(
 
 
 @router.post("/models/auto-assign", response_model=AutoAssignResult)
-async def auto_assign_defaults():
+async def auto_assign_defaults(request: Request, _=Depends(require_admin)):
     """
     Auto-assign default models based on available models.
 
@@ -691,13 +692,13 @@ async def auto_assign_defaults():
         - missing: List of slots with no available models
     """
     try:
-        from open_notebook.database.repository import repo_query
+        from open_notebook.database.repository import admin_repo_query
 
         # Get current defaults
         defaults = await DefaultModels.get_instance()
 
         # Get all models grouped by type
-        all_models = await repo_query(
+        all_models = await admin_repo_query(
             "SELECT * FROM model ORDER BY provider, name",
             {},
         )

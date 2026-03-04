@@ -9,7 +9,7 @@ from esperanto import (
 )
 from loguru import logger
 
-from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.database.repository import admin_repo_query, ensure_record_id, repo_query
 from open_notebook.domain.base import ObjectModel, RecordModel
 from open_notebook.exceptions import ConfigurationError
 
@@ -26,7 +26,7 @@ class Model(ObjectModel):
 
     @classmethod
     async def get_models_by_type(cls, model_type):
-        models = await repo_query(
+        models = await admin_repo_query(
             "SELECT * FROM model WHERE type=$model_type;", {"model_type": model_type}
         )
         return [Model(**model) for model in models]
@@ -34,11 +34,32 @@ class Model(ObjectModel):
     @classmethod
     async def get_by_credential(cls, credential_id: str):
         """Get all models linked to a specific credential."""
-        models = await repo_query(
+        models = await admin_repo_query(
             "SELECT * FROM model WHERE credential=$cred_id;",
             {"cred_id": ensure_record_id(credential_id)},
         )
         return [Model(**model) for model in models]
+
+    @classmethod
+    async def get_all(cls, order_by=None):
+        """Override to read from admin database."""
+        if order_by:
+            query = f"SELECT * FROM {cls.table_name} ORDER BY {order_by}"
+        else:
+            query = f"SELECT * FROM {cls.table_name}"
+        result = await admin_repo_query(query)
+        return [cls(**obj) for obj in result]
+
+    @classmethod
+    async def get(cls, id: str):
+        """Override to read from admin database."""
+        result = await admin_repo_query(
+            "SELECT * FROM $id", {"id": ensure_record_id(id)}
+        )
+        if result:
+            return cls(**result[0])
+        from open_notebook.exceptions import NotFoundError
+        raise NotFoundError(f"Model with id {id} not found")
 
     def _prepare_save_data(self) -> Dict[str, Any]:
         data = super()._prepare_save_data()
@@ -73,7 +94,7 @@ class DefaultModels(RecordModel):
     @classmethod
     async def get_instance(cls) -> "DefaultModels":
         """Always fetch fresh defaults from database (override parent caching behavior)"""
-        result = await repo_query(
+        result = await admin_repo_query(
             "SELECT * FROM ONLY $record_id",
             {"record_id": ensure_record_id(cls.record_id)},
         )
