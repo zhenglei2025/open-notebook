@@ -519,13 +519,21 @@ async def write_section(state: DeepResearchState, config: RunnableConfig) -> dic
         results = state["section_search_results"]
         previous_summaries = state.get("section_summaries", [])
 
+        # Limit materials to top 20 by similarity to avoid context overflow
+        MAX_WRITE_MATERIALS = 20
+        if results and len(results) > MAX_WRITE_MATERIALS:
+            write_results = sorted(results, key=lambda r: r.get("similarity", 0), reverse=True)[:MAX_WRITE_MATERIALS]
+            logger.info(f"Deep Research: trimmed {len(results)} results to top {MAX_WRITE_MATERIALS} for writing")
+        else:
+            write_results = results
+
         prompt = Prompter(prompt_template="deep_research/write").render(
             data={
                 "outline": _format_outline(outline),
                 "previous_summaries": _format_previous_summaries(outline, previous_summaries),
                 "section_title": section["title"],
                 "section_description": section["description"],
-                "materials": _format_full_materials(results) if results else "No materials available. Write based on general knowledge.",
+                "materials": _format_full_materials(write_results) if write_results else "No materials available. Write based on general knowledge.",
             }
         )
 

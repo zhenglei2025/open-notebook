@@ -392,6 +392,7 @@ export function ChatPanel({
                       isRunning={deepResearchRunning}
                       report={deepResearchReport}
                       error={deepResearchError}
+                      notebookId={notebookId}
                     />
                   </div>
                 </div>

@@ -5,12 +5,18 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Search, CheckCircle2, Brain, PenTool, FileText, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
+import { MessageActions } from '@/components/source/MessageActions'
+import { useTranslation } from '@/lib/hooks/use-translation'
+import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { toast } from 'sonner'
 
 interface DeepResearchProgressProps {
     events: DeepResearchEvent[]
     isRunning: boolean
     report: string | null
     error: string | null
+    notebookId?: string
 }
 
 interface SectionProgress {
@@ -24,7 +30,19 @@ interface SectionProgress {
     summarized: boolean
 }
 
-export function DeepResearchProgress({ events, isRunning, report, error }: DeepResearchProgressProps) {
+export function DeepResearchProgress({ events, isRunning, report, error, notebookId }: DeepResearchProgressProps) {
+    const { t } = useTranslation()
+    const { openModal } = useModalManager()
+
+    const handleReferenceClick = (type: string, id: string) => {
+        const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
+        try {
+            openModal(modalType, id)
+        } catch {
+            toast.error(t.common.noResults)
+        }
+    }
+
     // Build section progress from events
     const sections: SectionProgress[] = []
     let outlineReasoning = ''
@@ -73,17 +91,29 @@ export function DeepResearchProgress({ events, isRunning, report, error }: DeepR
 
     // Show report if complete
     if (report) {
+        const markdownWithCompactRefs = convertReferencesToCompactMarkdown(report, t.common.references)
+        const LinkComponent = createCompactReferenceLinkComponent(handleReferenceClick)
+
         return (
             <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
                     <CheckCircle2 className="h-4 w-4" />
                     Deep Research 完成
                 </div>
-                <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {report}
+                <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all">
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            a: LinkComponent,
+                        }}
+                    >
+                        {markdownWithCompactRefs}
                     </ReactMarkdown>
                 </div>
+                <MessageActions
+                    content={report}
+                    notebookId={notebookId}
+                />
             </div>
         )
     }
@@ -106,7 +136,7 @@ export function DeepResearchProgress({ events, isRunning, report, error }: DeepR
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
                 <Brain className="h-4 w-4 text-primary" />
-                🔬 Deep Research
+                Deep Research
                 {isRunning && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
             </div>
 
