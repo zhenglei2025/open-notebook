@@ -96,3 +96,10 @@ export async function getActiveDeepResearch(
         return null
     }
 }
+
+/**
+ * Cancel a running deep research job.
+ */
+export async function cancelDeepResearch(jobId: string): Promise<void> {
+    await apiClient.post(`/deep-research/${encodeURIComponent(jobId)}/cancel`)
+}

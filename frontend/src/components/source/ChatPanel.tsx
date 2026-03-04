@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope, StopCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -23,7 +23,7 @@ import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { startDeepResearch, getDeepResearchStatus, getActiveDeepResearch, DeepResearchEvent } from '@/lib/api/deep-research'
+import { startDeepResearch, getDeepResearchStatus, getActiveDeepResearch, cancelDeepResearch, DeepResearchEvent } from '@/lib/api/deep-research'
 import { DeepResearchProgress } from './DeepResearchProgress'
 
 interface NotebookContextStats {
@@ -126,6 +126,9 @@ export function ChatPanel({
         setDeepResearchError(status.error || 'Deep research failed')
         toast.error(status.error || 'Deep research failed')
         stopPolling()
+      } else if (status.status === 'cancelled') {
+        setDeepResearchRunning(false)
+        stopPolling()
       }
     } catch (e) {
       console.warn('Failed to poll deep research status:', e)
@@ -204,6 +207,22 @@ export function ChatPanel({
       toast.error(msg)
     }
   }, [modelOverride, notebookId, startPolling])
+
+  const handleStopDeepResearch = useCallback(async () => {
+    const jobId = deepResearchJobId
+    stopPolling()
+    setDeepResearchRunning(false)
+    setDeepResearchMode(false)
+
+    if (jobId) {
+      try {
+        await cancelDeepResearch(jobId)
+        toast.success('Deep Research 已停止')
+      } catch (e) {
+        console.warn('Failed to cancel deep research:', e)
+      }
+    }
+  }, [deepResearchJobId, stopPolling])
 
   const handleReferenceClick = (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
@@ -427,17 +446,28 @@ export function ChatPanel({
                 <div className="flex items-center gap-2">
                   {contextType === 'notebook' && (
                     <Button
-                      variant={deepResearchMode ? 'default' : 'outline'}
+                      variant={deepResearchRunning ? 'destructive' : deepResearchMode ? 'default' : 'outline'}
                       size="sm"
-                      className={`h-7 text-xs gap-1.5 ${deepResearchMode
-                        ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                        : 'hover:border-purple-400 hover:text-purple-600'
+                      className={`h-7 text-xs gap-1.5 ${deepResearchRunning
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : deepResearchMode
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                          : 'hover:border-purple-400 hover:text-purple-600'
                         }`}
-                      onClick={() => setDeepResearchMode(!deepResearchMode)}
-                      disabled={isStreaming || deepResearchRunning}
+                      onClick={deepResearchRunning ? handleStopDeepResearch : () => setDeepResearchMode(!deepResearchMode)}
+                      disabled={isStreaming}
                     >
-                      <Microscope className="h-3 w-3" />
-                      Deep Research
+                      {deepResearchRunning ? (
+                        <>
+                          <StopCircle className="h-3 w-3" />
+                          停止研究
+                        </>
+                      ) : (
+                        <>
+                          <Microscope className="h-3 w-3" />
+                          Deep Research
+                        </>
+                      )}
                     </Button>
                   )}
                   <ModelSelector

@@ -18,6 +18,9 @@ from open_notebook.utils.error_classifier import classify_error
 
 router = APIRouter()
 
+# Track running background tasks by job_id for cancellation
+_running_tasks: Dict[str, asyncio.Task] = {}
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Request / Response models
@@ -97,6 +100,12 @@ async def _run_deep_research_background(
 
         logger.info(f"Deep Research job {job_id} completed successfully")
 
+    except asyncio.CancelledError:
+        logger.info(f"Deep Research job {job_id} was cancelled")
+        await repo_query(
+            "UPDATE $job_id SET status = 'cancelled', updated = time::now()",
+            {"job_id": ensure_record_id(job_id)},
+        )
     except OpenNotebookError as e:
         logger.error(f"Deep Research job {job_id} failed: {e}")
         await repo_query(
@@ -110,6 +119,8 @@ async def _run_deep_research_background(
             "UPDATE $job_id SET status = 'failed', error = $error, updated = time::now()",
             {"job_id": ensure_record_id(job_id), "error": user_message},
         )
+    finally:
+        _running_tasks.pop(job_id, None)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -153,11 +164,12 @@ async def start_deep_research(request: DeepResearchRequest):
 
         # Fire-and-forget background task — capture user DB context
         user_db = get_current_user_db()
-        asyncio.create_task(
+        task = asyncio.create_task(
             _run_deep_research_background(
                 job_id, request.question, request.notebook_id, request.model_id, user_db
             )
         )
+        _running_tasks[job_id] = task
 
         return DeepResearchJobResponse(
             job_id=job_id,
@@ -170,6 +182,29 @@ async def start_deep_research(request: DeepResearchRequest):
     except Exception as e:
         logger.error(f"Failed to start deep research: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start research: {str(e)}")
+
+
+@router.post("/deep-research/{job_id}/cancel")
+async def cancel_deep_research(job_id: str):
+    """Cancel a running deep research job."""
+    try:
+        # Cancel the asyncio task if it's still running
+        task = _running_tasks.get(job_id)
+        if task and not task.done():
+            task.cancel()
+            logger.info(f"Cancelled background task for job {job_id}")
+
+        # Update DB status
+        await repo_query(
+            "UPDATE $job_id SET status = 'cancelled', updated = time::now()",
+            {"job_id": ensure_record_id(job_id)},
+        )
+
+        return {"job_id": job_id, "status": "cancelled"}
+
+    except Exception as e:
+        logger.error(f"Failed to cancel deep research job: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel: {str(e)}")
 
 
 @router.get("/deep-research/active/{notebook_id}", response_model=Optional[DeepResearchStatusResponse])
