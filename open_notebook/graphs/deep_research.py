@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
+from open_notebook.database.repository import repo_query, ensure_record_id
 from open_notebook.domain.notebook import vector_search
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.utils import clean_thinking_content
@@ -71,6 +72,7 @@ class EvaluationResult(BaseModel):
 
 class DeepResearchState(TypedDict):
     question: str
+    notebook_id: Optional[str]  # Scope search to this notebook
     outline: Optional[List[Dict[str, Any]]]  # List of section dicts
     current_section_index: int
     section_search_count: int
@@ -151,6 +153,67 @@ def _emit_event(state: DeepResearchState, event_type: str, data: Dict[str, Any])
     return state.get("events", []) + [event]
 
 
+async def _notebook_vector_search(
+    keyword: str, notebook_id: str, match_count: int = 10, min_similarity: float = 0.2
+) -> list:
+    """Vector search scoped to a specific notebook's sources, done at SurrealQL level."""
+    from open_notebook.utils.embedding import generate_embedding
+
+    embed = await generate_embedding(keyword)
+
+    # Get source IDs for this notebook, then search only their embeddings
+    results = await repo_query(
+        """
+        LET $notebook_sources = (SELECT VALUE in FROM reference WHERE out = $notebook_id);
+
+        LET $source_results = (
+            SELECT
+                id,
+                source.title AS title,
+                content,
+                source.id AS parent_id,
+                vector::similarity::cosine(embedding, $embed) AS similarity
+            FROM source_embedding
+            WHERE source IN $notebook_sources
+                AND vector::similarity::cosine(embedding, $embed) >= $min_similarity
+            ORDER BY similarity DESC
+            LIMIT $match_count
+        );
+
+        LET $insight_results = (
+            SELECT
+                id,
+                insight_type + ' - ' + source.title AS title,
+                content,
+                source.id AS parent_id,
+                vector::similarity::cosine(embedding, $embed) AS similarity
+            FROM source_insight
+            WHERE source IN $notebook_sources
+                AND vector::similarity::cosine(embedding, $embed) >= $min_similarity
+            ORDER BY similarity DESC
+            LIMIT $match_count
+        );
+
+        LET $all = array::union($source_results, $insight_results);
+
+        RETURN (
+            SELECT id, title, content, parent_id, math::max(similarity) AS similarity
+            FROM $all
+            GROUP BY id
+            ORDER BY similarity DESC
+            LIMIT $match_count
+        );
+        """,
+        {
+            "notebook_id": ensure_record_id(notebook_id),
+            "embed": embed,
+            "match_count": match_count,
+            "min_similarity": min_similarity,
+        },
+    )
+    return results if results else []
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Node 1: Plan Outline
 # ──────────────────────────────────────────────────────────────────────
@@ -201,13 +264,14 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
 
 
 async def search_section(state: DeepResearchState, config: RunnableConfig) -> dict:
-    """Execute vector searches for current section's queries."""
+    """Execute vector searches for current section's queries, scoped to notebook."""
     try:
         outline = state["outline"]
         idx = state["current_section_index"]
         section = outline[idx]
         queries = state.get("current_queries", section["search_queries"])
         search_count = state["section_search_count"]
+        notebook_id = state.get("notebook_id")
 
         all_results = list(state.get("section_search_results", []))
         existing_ids = {r.get("id") for r in all_results}
@@ -215,7 +279,11 @@ async def search_section(state: DeepResearchState, config: RunnableConfig) -> di
         new_result_count = 0
         for query in queries:
             try:
-                results = await vector_search(query, 10, True, True)
+                # Use notebook-scoped search at SurrealQL level, or global search
+                if notebook_id:
+                    results = await _notebook_vector_search(query, notebook_id, 10)
+                else:
+                    results = await vector_search(query, 10, True, True)
                 for r in results:
                     if r.get("id") not in existing_ids:
                         all_results.append(r)

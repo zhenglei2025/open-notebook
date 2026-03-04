@@ -21,6 +21,7 @@ router = APIRouter()
 
 class DeepResearchRequest(BaseModel):
     question: str = Field(..., description="Research question")
+    notebook_id: Optional[str] = Field(None, description="Notebook ID to scope search")
     model_id: Optional[str] = Field(None, description="Optional model override")
 
 
@@ -29,7 +30,7 @@ class DeepResearchResponse(BaseModel):
     question: str = Field(..., description="Original question")
 
 
-async def stream_deep_research(question: str, model_id: Optional[str] = None) -> AsyncGenerator[str, None]:
+async def stream_deep_research(question: str, notebook_id: Optional[str] = None, model_id: Optional[str] = None) -> AsyncGenerator[str, None]:
     """Stream deep research progress as Server-Sent Events."""
     try:
         config = {}
@@ -41,6 +42,7 @@ async def stream_deep_research(question: str, model_id: Optional[str] = None) ->
         async for chunk in deep_research_graph.astream(
             input={
                 "question": question,
+                "notebook_id": notebook_id,
                 "outline": None,
                 "current_section_index": 0,
                 "section_search_count": 0,
@@ -90,7 +92,7 @@ async def deep_research(request: DeepResearchRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     return StreamingResponse(
-        stream_deep_research(request.question, request.model_id),
+        stream_deep_research(request.question, request.notebook_id, request.model_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -114,6 +116,7 @@ async def deep_research_simple(request: DeepResearchRequest):
         result = await deep_research_graph.ainvoke(
             input={
                 "question": request.question,
+                "notebook_id": request.notebook_id,
                 "outline": None,
                 "current_section_index": 0,
                 "section_search_count": 0,

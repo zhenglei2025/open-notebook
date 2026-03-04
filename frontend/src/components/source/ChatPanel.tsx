@@ -101,6 +101,7 @@ export function ChatPanel({
     try {
       const report = await startDeepResearch(
         question,
+        notebookId,
         modelOverride,
         (event) => {
           setDeepResearchEvents(prev => [...prev, event])
@@ -228,8 +229,8 @@ export function ChatPanel({
                     <div className="flex flex-col gap-2 max-w-[80%]">
                       <div
                         className={`rounded-lg px-4 py-2 ${message.type === 'human'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
                           }`}
                       >
                         {message.type === 'ai' ? (
@@ -341,8 +342,8 @@ export function ChatPanel({
                       variant={deepResearchMode ? 'default' : 'outline'}
                       size="sm"
                       className={`h-7 text-xs gap-1.5 ${deepResearchMode
-                          ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                          : 'hover:border-purple-400 hover:text-purple-600'
+                        ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                        : 'hover:border-purple-400 hover:text-purple-600'
                         }`}
                       onClick={() => setDeepResearchMode(!deepResearchMode)}
                       disabled={isStreaming || deepResearchRunning}
@@ -378,8 +379,8 @@ export function ChatPanel({
                 disabled={!input.trim() || isStreaming || deepResearchRunning}
                 size="icon"
                 className={`h-[40px] w-[40px] flex-shrink-0 ${deepResearchMode && !isStreaming && !deepResearchRunning
-                    ? 'bg-purple-600 hover:bg-purple-700'
-                    : ''
+                  ? 'bg-purple-600 hover:bg-purple-700'
+                  : ''
                   }`}
               >
                 {isStreaming || deepResearchRunning ? (

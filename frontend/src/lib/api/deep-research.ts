@@ -36,6 +36,7 @@ export interface DeepResearchEvent {
 
 export async function startDeepResearch(
     question: string,
+    notebookId?: string,
     modelId?: string,
     onEvent?: (event: DeepResearchEvent) => void,
 ): Promise<string> {
@@ -60,7 +61,7 @@ export async function startDeepResearch(
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question, model_id: modelId || null }),
+        body: JSON.stringify({ question, notebook_id: notebookId || null, model_id: modelId || null }),
     })
 
     if (!response.ok) {
