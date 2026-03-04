@@ -100,10 +100,14 @@ async def lifespan(app: FastAPI):
 
     # Initialize admin database (users table + default admin user)
     try:
-        from api.user_management import init_admin_db
+        from api.user_management import init_admin_db, init_all_user_databases
 
         await init_admin_db()
         logger.info("Admin database initialized")
+
+        # Run migrations for all existing user databases
+        # This ensures fn::vector_search, fn::text_search, and schema are available
+        await init_all_user_databases()
     except Exception as e:
         logger.error(f"Failed to initialize admin database: {str(e)}")
         logger.exception(e)

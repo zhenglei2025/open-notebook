@@ -109,7 +109,7 @@ async def db_connection():
     else:
         database = os.environ.get("SURREAL_DATABASE")
 
-    logger.info(f"db_connection: using database='{database}' (contextvar={current_user_db.get()}, worker_fallback={_worker_user_db})")
+    logger.debug(f"db_connection: using database='{database}' (contextvar={current_user_db.get()}, worker_fallback={_worker_user_db})")
     await db.use(os.environ.get("SURREAL_NAMESPACE"), database)
     try:
         yield db

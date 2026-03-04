@@ -166,12 +166,84 @@ async def create_user(
 
         logger.info(f"Created user '{username}' with db_name='{db_name}'")
 
-        # Return simplified user info
-        return {
-            "username": username,
-            "db_name": db_name,
-            "is_admin": is_admin,
-        }
+    # Run database migrations for the new user's database
+    # This creates the schema, tables, and functions (like fn::vector_search)
+    await _init_user_database(db_name)
+
+    # Return simplified user info
+    return {
+        "username": username,
+        "db_name": db_name,
+        "is_admin": is_admin,
+    }
+
+
+async def _init_user_database(db_name: str) -> None:
+    """Run all migrations for a new user's database.
+
+    This ensures the user's database has all required schema, tables,
+    and functions (like fn::vector_search, fn::text_search).
+    """
+    from open_notebook.database.repository import set_current_user_db
+
+    logger.info(f"Initializing database '{db_name}' with migrations...")
+
+    # Temporarily set user DB context so db_connection() routes to this database
+    previous_db = None
+    try:
+        from api.user_auth import current_user_db
+        previous_db = current_user_db.get()
+    except Exception:
+        pass
+
+    try:
+        set_current_user_db(db_name)
+
+        from open_notebook.database.async_migrate import AsyncMigrationManager
+        manager = AsyncMigrationManager()
+        await manager.run_migration_up()
+        logger.info(f"Successfully initialized database '{db_name}'")
+    except Exception as e:
+        logger.error(f"Failed to initialize database '{db_name}': {e}")
+        raise
+    finally:
+        # Restore previous context
+        set_current_user_db(previous_db)
+
+
+async def init_all_user_databases() -> None:
+    """Run pending migrations for all existing user databases.
+
+    Called at startup to ensure all user databases have the required
+    schema, tables, and functions (e.g., fn::vector_search).
+    Skips the admin/default database since it's already migrated by the
+    main migration manager.
+    """
+    default_db = os.environ.get("SURREAL_DATABASE", "open_notebook")
+
+    async with admin_db_connection() as db:
+        result = parse_record_ids(
+            await db.query("SELECT db_name FROM users")
+        )
+
+        user_dbs: set[str] = set()
+        if result and isinstance(result, list):
+            for r in result:
+                if isinstance(r, list):
+                    for item in r:
+                        if isinstance(item, dict) and item.get("db_name"):
+                            user_dbs.add(item["db_name"])
+                elif isinstance(r, dict) and r.get("db_name"):
+                    user_dbs.add(r["db_name"])
+
+    for db_name in user_dbs:
+        # Skip the default database (already migrated by main migration manager)
+        if db_name == default_db:
+            continue
+        try:
+            await _init_user_database(db_name)
+        except Exception as e:
+            logger.error(f"Failed to initialize user database '{db_name}': {e}")
 
 
 async def list_users() -> List[Dict[str, Any]]:
