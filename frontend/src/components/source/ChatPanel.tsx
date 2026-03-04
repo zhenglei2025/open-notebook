@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect, useId } from 'react'
+import { useState, useRef, useEffect, useId, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -23,6 +23,8 @@ import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { startDeepResearch, DeepResearchEvent } from '@/lib/api/deep-research'
+import { DeepResearchProgress } from './DeepResearchProgress'
 
 interface NotebookContextStats {
   sourcesInsights: number
@@ -83,6 +85,37 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { openModal } = useModalManager()
 
+  // Deep Research state
+  const [deepResearchMode, setDeepResearchMode] = useState(false)
+  const [deepResearchRunning, setDeepResearchRunning] = useState(false)
+  const [deepResearchEvents, setDeepResearchEvents] = useState<DeepResearchEvent[]>([])
+  const [deepResearchReport, setDeepResearchReport] = useState<string | null>(null)
+  const [deepResearchError, setDeepResearchError] = useState<string | null>(null)
+
+  const handleDeepResearch = useCallback(async (question: string) => {
+    setDeepResearchRunning(true)
+    setDeepResearchEvents([])
+    setDeepResearchReport(null)
+    setDeepResearchError(null)
+
+    try {
+      const report = await startDeepResearch(
+        question,
+        modelOverride,
+        (event) => {
+          setDeepResearchEvents(prev => [...prev, event])
+        },
+      )
+      setDeepResearchReport(report)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Deep research failed'
+      setDeepResearchError(msg)
+      toast.error(msg)
+    } finally {
+      setDeepResearchRunning(false)
+    }
+  }, [modelOverride])
+
   const handleReferenceClick = (type: string, id: string) => {
     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
 
@@ -102,8 +135,12 @@ export function ChatPanel({
   }, [messages])
 
   const handleSend = () => {
-    if (input.trim() && !isStreaming) {
-      onSendMessage(input.trim(), modelOverride)
+    if (input.trim() && !isStreaming && !deepResearchRunning) {
+      if (deepResearchMode) {
+        handleDeepResearch(input.trim())
+      } else {
+        onSendMessage(input.trim(), modelOverride)
+      }
       setInput('')
     }
   }
@@ -125,200 +162,238 @@ export function ChatPanel({
 
   return (
     <>
-    <Card className="flex flex-col h-full flex-1 overflow-hidden">
-      <CardHeader className="pb-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            {title || (contextType === 'source' ? t.chat.chatWith.replace('{name}', t.navigation.sources) : t.chat.chatWith.replace('{name}', t.common.notebook))}
-          </CardTitle>
-          {onSelectSession && onCreateSession && onDeleteSession && (
-            <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                onClick={() => setSessionManagerOpen(true)}
-                disabled={loadingSessions}
-              >
-                <Clock className="h-4 w-4" />
-                <span className="text-xs">{t.chat.sessions}</span>
-              </Button>
-              <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
-                <DialogTitle className="sr-only">{t.chat.sessionsTitle}</DialogTitle>
-                <SessionManager
-                  sessions={sessions}
-                  currentSessionId={currentSessionId ?? null}
-                  onCreateSession={(title) => onCreateSession?.(title)}
-                  onSelectSession={(sessionId) => {
-                    onSelectSession(sessionId)
-                    setSessionManagerOpen(false)
-                  }}
-                  onUpdateSession={(sessionId, title) => onUpdateSession?.(sessionId, title)}
-                  onDeleteSession={(sessionId) => onDeleteSession?.(sessionId)}
-                  loadingSessions={loadingSessions}
-                />
-              </DialogContent>
-            </Dialog>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="flex-1 flex flex-col min-h-0 p-0">
-        <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
-          <div className="space-y-4 py-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-sm">
-                  {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.notebook)}
-                </p>
-                <p className="text-xs mt-2">{t.chat.askQuestions}</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${
-                    message.type === 'human' ? 'justify-end' : 'justify-start'
-                  }`}
+      <Card className="flex flex-col h-full flex-1 overflow-hidden">
+        <CardHeader className="pb-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              {title || (contextType === 'source' ? t.chat.chatWith.replace('{name}', t.navigation.sources) : t.chat.chatWith.replace('{name}', t.common.notebook))}
+            </CardTitle>
+            {onSelectSession && onCreateSession && onDeleteSession && (
+              <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setSessionManagerOpen(true)}
+                  disabled={loadingSessions}
                 >
-                  {message.type === 'ai' && (
-                    <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Bot className="h-4 w-4" />
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2 max-w-[80%]">
-                    <div
-                      className={`rounded-lg px-4 py-2 ${
-                        message.type === 'human'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
+                  <Clock className="h-4 w-4" />
+                  <span className="text-xs">{t.chat.sessions}</span>
+                </Button>
+                <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
+                  <DialogTitle className="sr-only">{t.chat.sessionsTitle}</DialogTitle>
+                  <SessionManager
+                    sessions={sessions}
+                    currentSessionId={currentSessionId ?? null}
+                    onCreateSession={(title) => onCreateSession?.(title)}
+                    onSelectSession={(sessionId) => {
+                      onSelectSession(sessionId)
+                      setSessionManagerOpen(false)
+                    }}
+                    onUpdateSession={(sessionId, title) => onUpdateSession?.(sessionId, title)}
+                    onDeleteSession={(sessionId) => onDeleteSession?.(sessionId)}
+                    loadingSessions={loadingSessions}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col min-h-0 p-0">
+          <ScrollArea className="flex-1 min-h-0 px-4" ref={scrollAreaRef}>
+            <div className="space-y-4 py-4">
+              {messages.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm">
+                    {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.notebook)}
+                  </p>
+                  <p className="text-xs mt-2">{t.chat.askQuestions}</p>
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${message.type === 'human' ? 'justify-end' : 'justify-start'
                       }`}
-                    >
-                      {message.type === 'ai' ? (
-                        <AIMessageContent
+                  >
+                    {message.type === 'ai' && (
+                      <div className="flex-shrink-0">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2 max-w-[80%]">
+                      <div
+                        className={`rounded-lg px-4 py-2 ${message.type === 'human'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                          }`}
+                      >
+                        {message.type === 'ai' ? (
+                          <AIMessageContent
+                            content={message.content}
+                            onReferenceClick={handleReferenceClick}
+                          />
+                        ) : (
+                          <p className="text-sm break-all">{message.content}</p>
+                        )}
+                      </div>
+                      {message.type === 'ai' && (
+                        <MessageActions
                           content={message.content}
-                          onReferenceClick={handleReferenceClick}
+                          notebookId={notebookId}
                         />
-                      ) : (
-                        <p className="text-sm break-all">{message.content}</p>
                       )}
                     </div>
-                    {message.type === 'ai' && (
-                      <MessageActions
-                        content={message.content}
-                        notebookId={notebookId}
-                      />
+                    {message.type === 'human' && (
+                      <div className="flex-shrink-0">
+                        <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      </div>
                     )}
                   </div>
-                  {message.type === 'human' && (
-                    <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                        <User className="h-4 w-4 text-primary-foreground" />
-                      </div>
+                ))
+              )}
+              {isStreaming && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Bot className="h-4 w-4" />
                     </div>
-                  )}
-                </div>
-              ))
-            )}
-            {isStreaming && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Bot className="h-4 w-4" />
+                  </div>
+                  <div className="rounded-lg px-4 py-2 bg-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   </div>
                 </div>
-                <div className="rounded-lg px-4 py-2 bg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              {/* Deep Research Progress */}
+              {(deepResearchRunning || deepResearchReport || deepResearchError) && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-purple-500/10 flex items-center justify-center">
+                      <Microscope className="h-4 w-4 text-purple-600" />
+                    </div>
+                  </div>
+                  <div className="rounded-lg px-4 py-3 bg-muted max-w-[90%]">
+                    <DeepResearchProgress
+                      events={deepResearchEvents}
+                      isRunning={deepResearchRunning}
+                      report={deepResearchReport}
+                      error={deepResearchError}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Context Indicators */}
-        {contextIndicators && (
-          <div className="border-t px-4 py-2">
-            <div className="flex flex-wrap gap-2 text-xs">
-              {contextIndicators.sources?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <FileText className="h-3 w-3" />
-                  {contextIndicators.sources.length} {t.navigation.sources}
-                </Badge>
               )}
-              {contextIndicators.insights?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <Lightbulb className="h-3 w-3" />
-                  {contextIndicators.insights.length} {contextIndicators.insights.length === 1 ? t.common.insight : t.common.insights}
-                </Badge>
-              )}
-              {contextIndicators.notes?.length > 0 && (
-                <Badge variant="outline" className="gap-1">
-                  <StickyNote className="h-3 w-3" />
-                  {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t.common.note : t.common.notes}
-                </Badge>
-              )}
+              <div ref={messagesEndRef} />
             </div>
-          </div>
-        )}
+          </ScrollArea>
 
-        {/* Notebook Context Indicator */}
-        {notebookContextStats && (
-          <ContextIndicator
-            sourcesInsights={notebookContextStats.sourcesInsights}
-            sourcesFull={notebookContextStats.sourcesFull}
-            notesCount={notebookContextStats.notesCount}
-            tokenCount={notebookContextStats.tokenCount}
-            charCount={notebookContextStats.charCount}
-          />
-        )}
-
-        {/* Input Area */}
-        <div className="flex-shrink-0 p-4 space-y-3 border-t">
-          {/* Model selector */}
-          {onModelChange && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{t.chat.model}</span>
-              <ModelSelector
-                currentModel={modelOverride}
-                onModelChange={onModelChange}
-                disabled={isStreaming}
-              />
+          {/* Context Indicators */}
+          {contextIndicators && (
+            <div className="border-t px-4 py-2">
+              <div className="flex flex-wrap gap-2 text-xs">
+                {contextIndicators.sources?.length > 0 && (
+                  <Badge variant="outline" className="gap-1">
+                    <FileText className="h-3 w-3" />
+                    {contextIndicators.sources.length} {t.navigation.sources}
+                  </Badge>
+                )}
+                {contextIndicators.insights?.length > 0 && (
+                  <Badge variant="outline" className="gap-1">
+                    <Lightbulb className="h-3 w-3" />
+                    {contextIndicators.insights.length} {contextIndicators.insights.length === 1 ? t.common.insight : t.common.insights}
+                  </Badge>
+                )}
+                {contextIndicators.notes?.length > 0 && (
+                  <Badge variant="outline" className="gap-1">
+                    <StickyNote className="h-3 w-3" />
+                    {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t.common.note : t.common.notes}
+                  </Badge>
+                )}
+              </div>
             </div>
           )}
 
-          <div className="flex gap-2 items-end min-w-0">
-            <Textarea
-              id={chatInputId}
-              name="chat-message"
-              autoComplete="off"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={`${t.chat.sendPlaceholder} (${t.chat.pressToSend.replace('{key}', keyHint)})`}
-              disabled={isStreaming}
-              className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3 min-w-0"
-              rows={1}
+          {/* Notebook Context Indicator */}
+          {notebookContextStats && (
+            <ContextIndicator
+              sourcesInsights={notebookContextStats.sourcesInsights}
+              sourcesFull={notebookContextStats.sourcesFull}
+              notesCount={notebookContextStats.notesCount}
+              tokenCount={notebookContextStats.tokenCount}
+              charCount={notebookContextStats.charCount}
             />
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-              size="icon"
-              className="h-[40px] w-[40px] flex-shrink-0"
-            >
-              {isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+          )}
+
+          {/* Input Area */}
+          <div className="flex-shrink-0 p-4 space-y-3 border-t">
+            {/* Model selector + Deep Research toggle */}
+            {onModelChange && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{t.chat.model}</span>
+                <div className="flex items-center gap-2">
+                  {contextType === 'notebook' && (
+                    <Button
+                      variant={deepResearchMode ? 'default' : 'outline'}
+                      size="sm"
+                      className={`h-7 text-xs gap-1.5 ${deepResearchMode
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                          : 'hover:border-purple-400 hover:text-purple-600'
+                        }`}
+                      onClick={() => setDeepResearchMode(!deepResearchMode)}
+                      disabled={isStreaming || deepResearchRunning}
+                    >
+                      <Microscope className="h-3 w-3" />
+                      Deep Research
+                    </Button>
+                  )}
+                  <ModelSelector
+                    currentModel={modelOverride}
+                    onModelChange={onModelChange}
+                    disabled={isStreaming}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 items-end min-w-0">
+              <Textarea
+                id={chatInputId}
+                name="chat-message"
+                autoComplete="off"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={`${t.chat.sendPlaceholder} (${t.chat.pressToSend.replace('{key}', keyHint)})`}
+                disabled={isStreaming}
+                className="flex-1 min-h-[40px] max-h-[100px] resize-none py-2 px-3 min-w-0"
+                rows={1}
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim() || isStreaming || deepResearchRunning}
+                size="icon"
+                className={`h-[40px] w-[40px] flex-shrink-0 ${deepResearchMode && !isStreaming && !deepResearchRunning
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : ''
+                  }`}
+              >
+                {isStreaming || deepResearchRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : deepResearchMode ? (
+                  <Microscope className="h-4 w-4" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
 
     </>
   )
