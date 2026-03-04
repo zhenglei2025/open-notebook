@@ -183,7 +183,10 @@ async def get_sources(
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
 
-            # Query sources for specific notebook - include command field with FETCH
+            # Query sources for specific notebook
+            # Note: We don't FETCH command because command records live in the
+            # default DB (managed by surreal_commands), not in user DBs.
+            # The frontend uses /sources/{id}/status API to get command status.
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
@@ -191,7 +194,6 @@ async def get_sources(
                 FROM (select value in from reference where out=$notebook_id)
                 {order_clause}
                 LIMIT $limit START $offset
-                FETCH command
             """
             result = await repo_query(
                 query,
@@ -202,7 +204,7 @@ async def get_sources(
                 },
             )
         else:
-            # Query all sources - include command field with FETCH
+            # Query all sources
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
@@ -210,39 +212,16 @@ async def get_sources(
                 FROM source
                 {order_clause}
                 LIMIT $limit START $offset
-                FETCH command
             """
             result = await repo_query(query, {"limit": limit, "offset": offset})
 
         # Convert result to response model
-        # Command data is already fetched via FETCH command clause
+        # Command status is fetched independently via /sources/{id}/status API
         response_list = []
         for row in result:
             command = row.get("command")
-            command_id = None
-            status = None
-            processing_info = None
-
-            # Extract status from fetched command object (already resolved by FETCH)
-            if command and isinstance(command, dict):
-                command_id = str(command.get("id")) if command.get("id") else None
-                status = command.get("status")
-                # Extract execution metadata from nested result structure
-                result_data = command.get("result")
-                execution_metadata = (
-                    result_data.get("execution_metadata", {})
-                    if isinstance(result_data, dict)
-                    else {}
-                )
-                processing_info = {
-                    "started_at": execution_metadata.get("started_at"),
-                    "completed_at": execution_metadata.get("completed_at"),
-                    "error": command.get("error_message"),
-                }
-            elif command:
-                # Command exists but FETCH failed to resolve it (broken reference)
-                command_id = str(command)
-                status = "unknown"
+            # command is a raw record ID string (e.g. "command:xxx"), not a resolved object
+            command_id = str(command) if command else None
 
             response_list.append(
                 SourceListResponse(
@@ -262,10 +241,10 @@ async def get_sources(
                     insights_count=row.get("insights_count", 0),
                     created=str(row["created"]),
                     updated=str(row["updated"]),
-                    # Status fields from fetched command
+                    # Pass raw command_id; status is fetched via independent API
                     command_id=command_id,
-                    status=status,
-                    processing_info=processing_info,
+                    status=None,
+                    processing_info=None,
                 )
             )
 
