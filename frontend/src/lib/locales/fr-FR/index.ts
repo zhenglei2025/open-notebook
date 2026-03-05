@@ -30,7 +30,7 @@ export const frFR = {
     podcast: "Podcast",
     quickActions: "Actions rapides",
     quickActionsDesc: "Navigation, recherche, poser une question, thème",
-    appName: "Open Notebook",
+    appName: "Up Notebook",
     add: "Ajouter",
     remove: "Retirer",
     confirm: "Confirmer",

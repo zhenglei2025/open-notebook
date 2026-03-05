@@ -44,19 +44,19 @@ export function useAuth() {
     if (success) {
       // Clear any cached data from previous user session
       queryClient.clear()
-      // Check if there's a stored redirect path
-      const redirectPath = sessionStorage.getItem('redirectAfterLogin')
-      if (redirectPath) {
-        sessionStorage.removeItem('redirectAfterLogin')
-        router.push(redirectPath)
-      } else {
-        router.push('/notebooks')
-      }
+      // Clear logout flag
+      sessionStorage.removeItem('loggingOut')
+      // Always redirect to /notebooks after login to avoid navigating to
+      // a previous user's notebook URL (stale redirectAfterLogin)
+      sessionStorage.removeItem('redirectAfterLogin')
+      router.push('/notebooks')
     }
     return success
   }
 
   const handleLogout = () => {
+    // Set flag to prevent dashboard layout from re-saving redirect path
+    sessionStorage.setItem('loggingOut', 'true')
     logout()
     // Clear all React Query cached data to prevent stale data from showing for the next user
     queryClient.clear()
