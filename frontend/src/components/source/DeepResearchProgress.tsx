@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Search, CheckCircle2, Brain, PenTool, FileText, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
+// [DISABLED] Reference conversion - may re-enable later
+// import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
 import { MessageActions } from '@/components/source/MessageActions'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
@@ -91,8 +92,9 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
 
     // Show report if complete
     if (report) {
-        const markdownWithCompactRefs = convertReferencesToCompactMarkdown(report, t.common.references)
-        const LinkComponent = createCompactReferenceLinkComponent(handleReferenceClick)
+        // [DISABLED] Reference conversion - may re-enable later
+        // const markdownWithCompactRefs = convertReferencesToCompactMarkdown(report, t.common.references)
+        // const LinkComponent = createCompactReferenceLinkComponent(handleReferenceClick)
 
         return (
             <div className="space-y-4">
@@ -103,11 +105,12 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
-                        components={{
-                            a: LinkComponent,
-                        }}
+                    // [DISABLED] Reference link component - may re-enable later
+                    // components={{
+                    //     a: LinkComponent,
+                    // }}
                     >
-                        {markdownWithCompactRefs}
+                        {report}
                     </ReactMarkdown>
                 </div>
                 <MessageActions

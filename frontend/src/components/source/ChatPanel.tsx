@@ -143,15 +143,26 @@ export function ChatPanel({
     pollJobStatus(jobId)
   }, [stopPolling, pollJobStatus])
 
-  // Check for active job on mount (resume after navigation)
+  // Check for active job on mount or session change
   useEffect(() => {
     if (!notebookId) return
+
+    // Reset deep research state for new session
+    stopPolling()
+    setDeepResearchMode(false)
+    setDeepResearchRunning(false)
+    setDeepResearchEvents([])
+    setDeepResearchReport(null)
+    setDeepResearchError(null)
+    setDeepResearchJobId(null)
+    eventsCursorRef.current = 0
+
     let cancelled = false
 
     const checkActiveJob = async () => {
       try {
-        console.log('[DeepResearch] Checking active job for notebook:', notebookId)
-        const active = await getActiveDeepResearch(notebookId)
+        console.log('[DeepResearch] Checking active job for notebook:', notebookId, 'session:', currentSessionId)
+        const active = await getActiveDeepResearch(notebookId, currentSessionId || undefined)
         console.log('[DeepResearch] Active job result:', active)
         if (cancelled || !active) return
 
@@ -166,7 +177,6 @@ export function ChatPanel({
           setDeepResearchJobId(active.job_id)
         } else if (active.status !== 'failed') {
           // Any status other than 'completed' or 'failed' means still running
-          // (status gets overwritten with step descriptions like "Outlined 5 sections")
           console.log('[DeepResearch] Resuming running job:', active.job_id, 'status:', active.status)
           setDeepResearchMode(true)
           setDeepResearchRunning(true)
@@ -182,7 +192,7 @@ export function ChatPanel({
 
     checkActiveJob()
     return () => { cancelled = true; stopPolling() }
-  }, [notebookId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notebookId, currentSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -197,7 +207,7 @@ export function ChatPanel({
     eventsCursorRef.current = 0
 
     try {
-      const job = await startDeepResearch(question, notebookId, modelOverride)
+      const job = await startDeepResearch(question, notebookId, modelOverride, currentSessionId || undefined)
       setDeepResearchJobId(job.job_id)
       startPolling(job.job_id)
     } catch (e) {
@@ -206,7 +216,7 @@ export function ChatPanel({
       setDeepResearchRunning(false)
       toast.error(msg)
     }
-  }, [modelOverride, notebookId, startPolling])
+  }, [modelOverride, notebookId, currentSessionId, startPolling])
 
   const handleStopDeepResearch = useCallback(async () => {
     const jobId = deepResearchJobId

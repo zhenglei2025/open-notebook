@@ -56,11 +56,13 @@ export async function startDeepResearch(
     question: string,
     notebookId?: string,
     modelId?: string,
+    sessionId?: string,
 ): Promise<DeepResearchJobResponse> {
     const response = await apiClient.post<DeepResearchJobResponse>('/deep-research', {
         question,
         notebook_id: notebookId || null,
         model_id: modelId || null,
+        session_id: sessionId || null,
     })
     return response.data
 }
@@ -86,10 +88,14 @@ export async function getDeepResearchStatus(
  */
 export async function getActiveDeepResearch(
     notebookId: string,
+    sessionId?: string,
 ): Promise<DeepResearchStatusResponse | null> {
     try {
+        const params: Record<string, string> = {}
+        if (sessionId) params.session_id = sessionId
         const response = await apiClient.get<DeepResearchStatusResponse | null>(
             `/deep-research/active/${encodeURIComponent(notebookId)}`,
+            { params },
         )
         return response.data
     } catch {

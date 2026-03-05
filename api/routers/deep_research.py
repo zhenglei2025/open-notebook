@@ -30,6 +30,7 @@ _running_tasks: Dict[str, asyncio.Task] = {}
 class DeepResearchRequest(BaseModel):
     question: str = Field(..., description="Research question")
     notebook_id: Optional[str] = Field(None, description="Notebook ID to scope search")
+    session_id: Optional[str] = Field(None, description="Chat session ID to associate with")
     model_id: Optional[str] = Field(None, description="Optional model override")
 
 
@@ -141,6 +142,7 @@ async def start_deep_research(request: DeepResearchRequest):
             CREATE deep_research_job SET
                 question = $question,
                 notebook_id = $notebook_id,
+                session_id = $session_id,
                 model_id = $model_id,
                 status = 'running',
                 events = [],
@@ -152,6 +154,7 @@ async def start_deep_research(request: DeepResearchRequest):
             {
                 "question": request.question,
                 "notebook_id": request.notebook_id,
+                "session_id": request.session_id,
                 "model_id": request.model_id,
             },
         )
@@ -208,22 +211,34 @@ async def cancel_deep_research(job_id: str):
 
 
 @router.get("/deep-research/active/{notebook_id}", response_model=Optional[DeepResearchStatusResponse])
-async def get_active_deep_research(notebook_id: str):
-    """Get the most recent running or completed deep research job for a notebook."""
+async def get_active_deep_research(notebook_id: str, session_id: Optional[str] = None):
+    """Get the most recent running or completed deep research job for a notebook+session."""
     try:
-        logger.info(f"Checking active deep research for notebook: {notebook_id}")
-        result = await repo_query(
-            """
-            SELECT * FROM deep_research_job
-            WHERE notebook_id = $notebook_id
-            ORDER BY created DESC
-            LIMIT 1
-            """,
-            {"notebook_id": notebook_id},
-        )
+        logger.info(f"Checking active deep research for notebook: {notebook_id}, session: {session_id}")
+
+        if session_id:
+            result = await repo_query(
+                """
+                SELECT * FROM deep_research_job
+                WHERE notebook_id = $notebook_id AND session_id = $session_id
+                ORDER BY created DESC
+                LIMIT 1
+                """,
+                {"notebook_id": notebook_id, "session_id": session_id},
+            )
+        else:
+            result = await repo_query(
+                """
+                SELECT * FROM deep_research_job
+                WHERE notebook_id = $notebook_id
+                ORDER BY created DESC
+                LIMIT 1
+                """,
+                {"notebook_id": notebook_id},
+            )
 
         if not result:
-            logger.info(f"No active deep research found for notebook: {notebook_id}")
+            logger.info(f"No active deep research found for notebook: {notebook_id}, session: {session_id}")
             return None
 
         job = result[0]
