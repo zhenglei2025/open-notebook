@@ -92,6 +92,7 @@ export function ChatPanel({
   const [deepResearchReport, setDeepResearchReport] = useState<string | null>(null)
   const [deepResearchError, setDeepResearchError] = useState<string | null>(null)
   const [deepResearchJobId, setDeepResearchJobId] = useState<string | null>(null)
+  const [deepResearchQuery, setDeepResearchQuery] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsCursorRef = useRef(0)
 
@@ -155,6 +156,7 @@ export function ChatPanel({
     setDeepResearchReport(null)
     setDeepResearchError(null)
     setDeepResearchJobId(null)
+    setDeepResearchQuery(null)
     eventsCursorRef.current = 0
 
     let cancelled = false
@@ -175,6 +177,7 @@ export function ChatPanel({
             setDeepResearchReport(active.final_report)
           }
           setDeepResearchJobId(active.job_id)
+          setDeepResearchQuery(active.question || null)
         } else if (active.status !== 'failed') {
           // Any status other than 'completed' or 'failed' means still running
           console.log('[DeepResearch] Resuming running job:', active.job_id, 'status:', active.status)
@@ -182,6 +185,7 @@ export function ChatPanel({
           setDeepResearchRunning(true)
           setDeepResearchJobId(active.job_id)
           setDeepResearchEvents(active.events || [])
+          setDeepResearchQuery(active.question || null)
           eventsCursorRef.current = (active.events || []).length
           startPolling(active.job_id)
         }
@@ -235,7 +239,9 @@ export function ChatPanel({
   }, [deepResearchJobId, stopPolling])
 
   const handleReferenceClick = (type: string, id: string) => {
-    const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
+    const modalType = type === 'source_insight' ? 'insight'
+      : type === 'source_embedding' ? 'source'
+        : type as 'source' | 'note' | 'insight'
 
     try {
       openModal(modalType, id)
@@ -255,6 +261,7 @@ export function ChatPanel({
   const handleSend = () => {
     if (input.trim() && !isStreaming && !deepResearchRunning) {
       if (deepResearchMode) {
+        setDeepResearchQuery(input.trim())
         handleDeepResearch(input.trim())
       } else {
         onSendMessage(input.trim(), modelOverride)
@@ -385,6 +392,21 @@ export function ChatPanel({
                   </div>
                   <div className="rounded-lg px-4 py-2 bg-muted">
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                </div>
+              )}
+              {/* Deep Research User Query */}
+              {deepResearchQuery && (deepResearchRunning || deepResearchReport || deepResearchError) && (
+                <div className="flex gap-3 justify-end">
+                  <div className="flex flex-col gap-2 max-w-[80%]">
+                    <div className="rounded-lg px-4 py-2 bg-primary text-primary-foreground">
+                      <p className="text-sm break-all">{deepResearchQuery}</p>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                      <User className="h-4 w-4 text-primary-foreground" />
+                    </div>
                   </div>
                 </div>
               )}

@@ -141,6 +141,11 @@ def _format_full_materials(results: List[Dict[str, Any]]) -> str:
     lines = []
     for r in results:
         rid = r.get("id", "unknown")
+        rid_str = str(rid)
+        # For source_embedding results, use the parent source ID so that
+        # references in the report link to the actual source record.
+        if rid_str.startswith("source_embedding:") and r.get("parent_id"):
+            rid = r["parent_id"]
         title = r.get("title", "")
         content = r.get("content", "")
         lines.append(f"### [{rid}] {title}\n\n{content}\n")

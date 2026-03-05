@@ -138,6 +138,28 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
         return user
 
 
+async def change_password(username: str, current_password: str, new_password: str) -> bool:
+    """
+    Change a user's password after verifying their current credentials.
+    Returns True on success, False if authentication fails.
+    """
+    # First authenticate with current credentials
+    user = await authenticate_user(username, current_password)
+    if not user:
+        return False
+
+    # Update password
+    new_hash = hash_password(new_password)
+    async with admin_db_connection() as db:
+        await db.query(
+            "UPDATE users SET password_hash = $hash WHERE username = $username",
+            {"hash": new_hash, "username": username},
+        )
+
+    logger.info(f"Password changed for user '{username}'")
+    return True
+
+
 async def create_user(
     username: str, password: str, is_admin: bool = False
 ) -> Dict[str, Any]:

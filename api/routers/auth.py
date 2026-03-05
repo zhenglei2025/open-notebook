@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
-from api.user_management import authenticate_user, generate_login_token
+from api.user_management import authenticate_user, generate_login_token, change_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -15,6 +15,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
 
 
 class LoginResponse(BaseModel):
@@ -55,3 +61,22 @@ async def get_auth_status():
         "multi_user": True,
         "message": "Multi-user authentication is enabled",
     }
+
+
+@router.post("/change-password")
+async def change_password_endpoint(request: ChangePasswordRequest):
+    """
+    Change a user's password. Requires current username and password for verification.
+    """
+    if not request.new_password.strip():
+        raise HTTPException(status_code=400, detail="New password cannot be empty")
+
+    success = await change_password(
+        request.username, request.current_password, request.new_password
+    )
+
+    if not success:
+        raise HTTPException(status_code=401, detail="Invalid username or current password")
+
+    logger.info(f"Password changed for user '{request.username}'")
+    return {"message": "Password changed successfully"}

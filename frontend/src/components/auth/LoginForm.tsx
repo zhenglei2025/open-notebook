@@ -8,9 +8,11 @@ import { getConfig } from '@/lib/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertCircle, KeyRound, CheckCircle2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import apiClient from '@/lib/api/client'
 
 export function LoginForm() {
   const { t, language } = useTranslation()
@@ -21,6 +23,16 @@ export function LoginForm() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [configInfo, setConfigInfo] = useState<{ apiUrl: string; version: string; buildTime: string } | null>(null)
   const router = useRouter()
+
+  // Change password state
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+  const [cpUsername, setCpUsername] = useState('')
+  const [cpCurrentPassword, setCpCurrentPassword] = useState('')
+  const [cpNewPassword, setCpNewPassword] = useState('')
+  const [cpConfirmPassword, setCpConfirmPassword] = useState('')
+  const [cpLoading, setCpLoading] = useState(false)
+  const [cpError, setCpError] = useState<string | null>(null)
+  const [cpSuccess, setCpSuccess] = useState(false)
 
   // Load config info for debugging
   useEffect(() => {
@@ -138,6 +150,54 @@ export function LoginForm() {
     }
   }
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCpError(null)
+    setCpSuccess(false)
+
+    // Validate passwords match
+    if (cpNewPassword !== cpConfirmPassword) {
+      setCpError(t.auth.passwordMismatch)
+      return
+    }
+
+    if (!cpNewPassword.trim()) {
+      setCpError(t.auth.passwordChangeFailed)
+      return
+    }
+
+    setCpLoading(true)
+    try {
+      await apiClient.post('/auth/change-password', {
+        username: cpUsername,
+        current_password: cpCurrentPassword,
+        new_password: cpNewPassword,
+      })
+      setCpSuccess(true)
+      setCpError(null)
+      // Clear form after success
+      setTimeout(() => {
+        setCpCurrentPassword('')
+        setCpNewPassword('')
+        setCpConfirmPassword('')
+      }, 1000)
+    } catch {
+      setCpError(t.auth.passwordChangeFailed)
+    } finally {
+      setCpLoading(false)
+    }
+  }
+
+  const openChangePassword = () => {
+    setCpUsername(username) // Pre-fill with login username if available
+    setCpCurrentPassword('')
+    setCpNewPassword('')
+    setCpConfirmPassword('')
+    setCpError(null)
+    setCpSuccess(false)
+    setChangePasswordOpen(true)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -185,6 +245,16 @@ export function LoginForm() {
               {isLoading ? t.auth.signingIn : t.auth.signIn}
             </Button>
 
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground"
+              onClick={openChangePassword}
+            >
+              <KeyRound className="h-3.5 w-3.5 mr-1.5" />
+              {t.auth.changePassword}
+            </Button>
+
             {configInfo && (
               <div className="text-xs text-center text-muted-foreground pt-2 border-t">
                 <div>{t.common.version} {configInfo.version}</div>
@@ -194,6 +264,90 @@ export function LoginForm() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Change Password Dialog */}
+      <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t.auth.changePasswordTitle}</DialogTitle>
+            <DialogDescription>{t.auth.changePasswordDesc}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <Input
+                type="text"
+                placeholder={t.auth.usernamePlaceholder || 'Username'}
+                value={cpUsername}
+                onChange={(e) => setCpUsername(e.target.value)}
+                disabled={cpLoading}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Input
+                type="password"
+                placeholder={t.auth.currentPassword}
+                value={cpCurrentPassword}
+                onChange={(e) => setCpCurrentPassword(e.target.value)}
+                disabled={cpLoading}
+                autoComplete="current-password"
+              />
+            </div>
+            <div>
+              <Input
+                type="password"
+                placeholder={t.auth.newPassword}
+                value={cpNewPassword}
+                onChange={(e) => setCpNewPassword(e.target.value)}
+                disabled={cpLoading}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <Input
+                type="password"
+                placeholder={t.auth.confirmNewPassword}
+                value={cpConfirmPassword}
+                onChange={(e) => setCpConfirmPassword(e.target.value)}
+                disabled={cpLoading}
+                autoComplete="new-password"
+              />
+            </div>
+
+            {cpError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {cpError}
+              </div>
+            )}
+
+            {cpSuccess && (
+              <div className="flex items-center gap-2 text-green-600 text-sm">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                {t.auth.passwordChangeSuccess}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setChangePasswordOpen(false)}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={cpLoading || !cpUsername.trim() || !cpCurrentPassword.trim() || !cpNewPassword.trim() || !cpConfirmPassword.trim()}
+              >
+                {cpLoading ? t.auth.changingPassword : t.common.confirm}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -149,6 +149,7 @@ app.add_middleware(
         "/redoc",
         "/api/auth/status",
         "/api/auth/login",
+        "/api/auth/change-password",
         "/api/config",
     ],
 )
