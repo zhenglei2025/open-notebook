@@ -3,9 +3,8 @@ Deep Research Agent - LangGraph implementation.
 
 A multi-step research agent that generates comprehensive reports by:
 1. Planning an outline (agent decides section count)
-2. For each section: search → evaluate (filter + sufficiency check, max 5 rounds) → write
-3. Summarize each section for cross-section consistency
-4. Compile all sections into a final report
+2. Processing ALL sections in PARALLEL: search → evaluate (max 3 rounds) → write → summarize
+3. Compile all sections into a final report
 """
 
 import asyncio
@@ -355,29 +354,50 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
         error_class, user_message = classify_error(e)
         raise error_class(user_message) from e
 
+# ──────────────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────────────
+
+MAX_SEARCH_ROUNDS = 3
+MAX_WRITE_MATERIALS = 20
+
 
 # ──────────────────────────────────────────────────────────────────────
-# Node 2: Search Section
+# Parallel section processing
 # ──────────────────────────────────────────────────────────────────────
 
 
-async def search_section(state: DeepResearchState, config: RunnableConfig) -> dict:
-    """Execute vector searches for current section's queries, scoped to notebook."""
-    try:
-        outline = state["outline"]
-        idx = state["current_section_index"]
-        section = outline[idx]
-        queries = state.get("current_queries", section["search_queries"])
-        search_count = state["section_search_count"]
-        notebook_id = state.get("notebook_id")
+async def _process_single_section(
+    section: Dict[str, Any],
+    section_index: int,
+    outline: List[Dict[str, Any]],
+    state: DeepResearchState,
+    config: RunnableConfig,
+) -> Dict[str, Any]:
+    """
+    Process a single section: search → evaluate → write → summarize.
+    Runs independently so multiple sections can execute in parallel.
+    """
+    notebook_id = state.get("notebook_id")
+    section_title = section["title"]
+    events: List[Dict[str, Any]] = []
 
-        all_results = list(state.get("section_search_results", []))
-        existing_ids = {r.get("id") for r in all_results}
+    def _add_event(event_type: str, data: Dict[str, Any]) -> None:
+        event = {"type": event_type, **data}
+        events.append(event)
 
+    # ── Search + Evaluate loop (max MAX_SEARCH_ROUNDS rounds) ──
+    all_results: List[Dict[str, Any]] = []
+    existing_ids: set = set()
+    queries = list(section["search_queries"])
+    search_count = 0
+    is_sufficient = False
+
+    while search_count < MAX_SEARCH_ROUNDS and not is_sufficient:
+        # Search
         new_result_count = 0
         for query in queries:
             try:
-                # Use notebook-scoped search at SurrealQL level, or global search
                 if notebook_id:
                     results = await _notebook_vector_search(query, notebook_id, 10)
                 else:
@@ -390,236 +410,194 @@ async def search_section(state: DeepResearchState, config: RunnableConfig) -> di
             except Exception as e:
                 logger.warning(f"Search failed for query '{query}': {e}")
 
+        search_count += 1
         logger.info(
-            f"Deep Research: section '{section['title']}' search #{search_count + 1}, "
-            f"found {new_result_count} new results, total {len(all_results)}"
+            f"Deep Research: section [{section_index}] '{section_title}' "
+            f"search #{search_count}, {new_result_count} new, total {len(all_results)}"
         )
 
-        result = {
-            "section_search_results": all_results,
-            "section_search_count": search_count + 1,
-            "status": f"Searching: {section['title']} (attempt {search_count + 1})",
-            "events": _emit_event(state, "search_done", {
-                "section": section["title"],
-                "section_index": idx,
-                "attempt": search_count + 1,
-                "new_results": new_result_count,
-                "total_results": len(all_results),
-            }),
-        }
-        await _update_job(state, {"status": result["status"], "events": result["events"]})
-        return result
-    except OpenNotebookError:
-        raise
-    except Exception as e:
-        error_class, user_message = classify_error(e)
-        raise error_class(user_message) from e
+        _add_event("search_done", {
+            "section": section_title,
+            "section_index": section_index,
+            "attempt": search_count,
+            "new_results": new_result_count,
+            "total_results": len(all_results),
+        })
 
+        # Update job with search progress
+        await _update_job(state, {
+            "status": f"Searching: {section_title} (attempt {search_count})",
+            "events": list(state.get("events", [])) + events,
+        })
 
-# ──────────────────────────────────────────────────────────────────────
-# Node 3: Evaluate Material
-# ──────────────────────────────────────────────────────────────────────
-
-
-async def evaluate_material(state: DeepResearchState, config: RunnableConfig) -> dict:
-    """Evaluate relevance and sufficiency of collected materials."""
-    try:
-        outline = state["outline"]
-        idx = state["current_section_index"]
-        section = outline[idx]
-        results = state["section_search_results"]
-        search_count = state["section_search_count"]
-
-        # If no results found, mark as sufficient to avoid infinite loop
-        if not results:
-            logger.info(f"Deep Research: no results for '{section['title']}', moving to write")
-            result_no_results = {
-                "is_material_sufficient": True,
-                "status": f"No materials found for: {section['title']}",
-                "events": _emit_event(state, "evaluate", {
-                    "section": section["title"],
-                    "section_index": idx,
-                    "sufficient": True,
-                    "reason": "No search results available",
-                }),
-            }
-            await _update_job(state, {"status": result_no_results["status"], "events": result_no_results["events"]})
-            return result_no_results
+        # Evaluate
+        if not all_results:
+            logger.info(f"Deep Research: no results for '{section_title}', proceeding to write")
+            _add_event("evaluate", {
+                "section": section_title,
+                "section_index": section_index,
+                "sufficient": True,
+                "reason": "No search results available",
+            })
+            break
 
         parser = PydanticOutputParser(pydantic_object=EvaluationResult)
         prompt = Prompter(prompt_template="deep_research/evaluate", parser=parser).render(
             data={
                 "section_title": section["title"],
                 "section_description": section["description"],
-                "result_count": len(results),
+                "result_count": len(all_results),
                 "search_count": search_count,
-                "results_summary": _format_results_summary(results),
+                "results_summary": _format_results_summary(all_results),
             }
         )
 
         model = await _provision_model(prompt, config, max_tokens=2048, structured=dict(type="json"))
         ai_message = await model.ainvoke(prompt)
-
         content = extract_text_content(ai_message.content)
         cleaned = clean_thinking_content(content)
         evaluation = parser.parse(cleaned)
 
         # Filter results based on relevance
-        relevant_indices = {
-            item.result_index for item in evaluation.relevance if item.relevant
-        }
-        filtered_results = [
-            r for i, r in enumerate(results) if i in relevant_indices
-        ]
+        relevant_indices = {item.result_index for item in evaluation.relevance if item.relevant}
+        all_results = [r for i, r in enumerate(all_results) if i in relevant_indices]
 
-        is_sufficient = evaluation.is_sufficient or search_count >= 5
-        new_queries = evaluation.new_queries if not is_sufficient else []
+        is_sufficient = evaluation.is_sufficient or search_count >= MAX_SEARCH_ROUNDS
+        queries = evaluation.new_queries if not is_sufficient else []
 
         logger.info(
-            f"Deep Research: evaluate '{section['title']}' - "
-            f"{len(filtered_results)}/{len(results)} relevant, "
-            f"sufficient={is_sufficient}, reason={evaluation.reason}"
+            f"Deep Research: evaluate [{section_index}] '{section_title}' - "
+            f"{len(all_results)} relevant, sufficient={is_sufficient}"
         )
 
-        result = {
-            "section_search_results": filtered_results,
-            "is_material_sufficient": is_sufficient,
-            "current_queries": new_queries,
-            "status": f"Evaluated: {section['title']} ({'sufficient' if is_sufficient else 'need more'})",
-            "events": _emit_event(state, "evaluate", {
-                "section": section["title"],
-                "section_index": idx,
-                "sufficient": is_sufficient,
-                "reason": evaluation.reason,
-                "relevant_count": len(filtered_results),
-                "total_count": len(results),
-                "new_queries": new_queries,
-            }),
+        _add_event("evaluate", {
+            "section": section_title,
+            "section_index": section_index,
+            "sufficient": is_sufficient,
+            "reason": evaluation.reason,
+            "relevant_count": len(all_results),
+            "new_queries": queries,
+        })
+
+        await _update_job(state, {
+            "status": f"Evaluated: {section_title} ({'sufficient' if is_sufficient else 'need more'})",
+            "events": list(state.get("events", [])) + events,
+        })
+
+    # ── Write section ──
+    write_results = all_results
+    if write_results and len(write_results) > MAX_WRITE_MATERIALS:
+        write_results = sorted(
+            write_results, key=lambda r: r.get("similarity", 0), reverse=True
+        )[:MAX_WRITE_MATERIALS]
+        logger.info(
+            f"Deep Research: trimmed {len(all_results)} results to "
+            f"top {MAX_WRITE_MATERIALS} for writing"
+        )
+
+    write_prompt = Prompter(prompt_template="deep_research/write").render(
+        data={
+            "outline": _format_outline(outline),
+            "previous_summaries": "",  # No cross-section context in parallel mode
+            "section_title": section["title"],
+            "section_description": section["description"],
+            "materials": _format_full_materials(write_results)
+            if write_results
+            else "No materials available. Write based on general knowledge.",
         }
-        await _update_job(state, {"status": result["status"], "events": result["events"]})
-        return result
-    except OpenNotebookError:
-        raise
-    except Exception as e:
-        error_class, user_message = classify_error(e)
-        raise error_class(user_message) from e
+    )
+
+    model = await _provision_model(write_prompt, config, max_tokens=8192)
+    ai_message = await model.ainvoke(write_prompt)
+    content = extract_text_content(ai_message.content)
+    draft = clean_thinking_content(content)
+
+    logger.info(
+        f"Deep Research: wrote section [{section_index}] "
+        f"'{section_title}' ({len(draft)} chars)"
+    )
+
+    _add_event("write_done", {
+        "section": section_title,
+        "section_index": section_index,
+        "draft_length": len(draft),
+        "preview": draft[:200] + "..." if len(draft) > 200 else draft,
+    })
+
+    await _update_job(state, {
+        "status": f"Written: {section_title}",
+        "events": list(state.get("events", [])) + events,
+    })
+
+    # ── Summarize section ──
+    summarize_prompt = Prompter(prompt_template="deep_research/summarize").render(
+        data={
+            "section_title": section["title"],
+            "section_content": draft,
+        }
+    )
+
+    model = await _provision_model(summarize_prompt, config, max_tokens=512)
+    ai_message = await model.ainvoke(summarize_prompt)
+    content = extract_text_content(ai_message.content)
+    summary = clean_thinking_content(content).strip()
+
+    logger.info(
+        f"Deep Research: summarized [{section_index}] "
+        f"'{section_title}': {summary[:80]}..."
+    )
+
+    _add_event("summarize_done", {
+        "section": section_title,
+        "section_index": section_index,
+        "summary": summary,
+    })
+
+    return {
+        "section_index": section_index,
+        "draft": draft,
+        "summary": summary,
+        "events": events,
+    }
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Node 4: Write Section
-# ──────────────────────────────────────────────────────────────────────
-
-
-async def write_section(state: DeepResearchState, config: RunnableConfig) -> dict:
-    """Write the current section based on filtered relevant materials."""
+async def process_all_sections(
+    state: DeepResearchState, config: RunnableConfig
+) -> dict:
+    """Process all sections in parallel using asyncio.gather."""
     try:
         outline = state["outline"]
-        idx = state["current_section_index"]
-        section = outline[idx]
-        results = state["section_search_results"]
-        previous_summaries = state.get("section_summaries", [])
 
-        # Limit materials to top 20 by similarity to avoid context overflow
-        MAX_WRITE_MATERIALS = 20
-        if results and len(results) > MAX_WRITE_MATERIALS:
-            write_results = sorted(results, key=lambda r: r.get("similarity", 0), reverse=True)[:MAX_WRITE_MATERIALS]
-            logger.info(f"Deep Research: trimmed {len(results)} results to top {MAX_WRITE_MATERIALS} for writing")
-        else:
-            write_results = results
+        logger.info(f"Deep Research: processing {len(outline)} sections in parallel")
 
-        prompt = Prompter(prompt_template="deep_research/write").render(
-            data={
-                "outline": _format_outline(outline),
-                "previous_summaries": _format_previous_summaries(outline, previous_summaries),
-                "section_title": section["title"],
-                "section_description": section["description"],
-                "materials": _format_full_materials(write_results) if write_results else "No materials available. Write based on general knowledge.",
-            }
-        )
+        # Launch all sections concurrently
+        tasks = [
+            _process_single_section(section, idx, outline, state, config)
+            for idx, section in enumerate(outline)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        model = await _provision_model(prompt, config, max_tokens=8192)
-        ai_message = await model.ainvoke(prompt)
+        # Collect results in order
+        drafts = [""] * len(outline)
+        summaries = [""] * len(outline)
+        all_events = list(state.get("events", []))
 
-        content = extract_text_content(ai_message.content)
-        draft = clean_thinking_content(content)
-
-        drafts = list(state.get("section_drafts", []))
-        drafts.append(draft)
-
-        logger.info(f"Deep Research: wrote section '{section['title']}' ({len(draft)} chars)")
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error(f"Deep Research: section processing failed: {r}")
+                continue
+            idx = r["section_index"]
+            drafts[idx] = r["draft"]
+            summaries[idx] = r["summary"]
+            all_events.extend(r["events"])
 
         result = {
             "section_drafts": drafts,
-            "status": f"Written: {section['title']}",
-            "events": _emit_event(state, "write_done", {
-                "section": section["title"],
-                "section_index": idx,
-                "draft_length": len(draft),
-                "preview": draft[:200] + "..." if len(draft) > 200 else draft,
-            }),
-        }
-        await _update_job(state, {"status": result["status"], "events": result["events"]})
-        return result
-    except OpenNotebookError:
-        raise
-    except Exception as e:
-        error_class, user_message = classify_error(e)
-        raise error_class(user_message) from e
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Node 5: Summarize Section
-# ──────────────────────────────────────────────────────────────────────
-
-
-async def summarize_section(state: DeepResearchState, config: RunnableConfig) -> dict:
-    """Summarize the just-written section for cross-section consistency."""
-    try:
-        outline = state["outline"]
-        idx = state["current_section_index"]
-        section = outline[idx]
-        drafts = state["section_drafts"]
-        latest_draft = drafts[-1]
-
-        prompt = Prompter(prompt_template="deep_research/summarize").render(
-            data={
-                "section_title": section["title"],
-                "section_content": latest_draft,
-            }
-        )
-
-        model = await _provision_model(prompt, config, max_tokens=512)
-        ai_message = await model.ainvoke(prompt)
-
-        content = extract_text_content(ai_message.content)
-        summary = clean_thinking_content(content).strip()
-
-        summaries = list(state.get("section_summaries", []))
-        summaries.append(summary)
-
-        # Advance to next section and reset per-section state
-        next_idx = idx + 1
-        next_queries = []
-        if next_idx < len(outline):
-            next_queries = outline[next_idx]["search_queries"]
-
-        logger.info(f"Deep Research: summarized '{section['title']}': {summary[:80]}...")
-
-        result = {
             "section_summaries": summaries,
-            "current_section_index": next_idx,
-            "section_search_count": 0,
-            "section_search_results": [],
-            "current_queries": next_queries,
-            "is_material_sufficient": False,
-            "status": f"Summarized: {section['title']}",
-            "events": _emit_event(state, "summarize_done", {
-                "section": section["title"],
-                "section_index": idx,
-                "summary": summary,
-            }),
+            "events": all_events,
+            "status": "All sections written, compiling report",
         }
-        await _update_job(state, {"status": result["status"], "events": result["events"]})
+        await _update_job(state, {"status": result["status"], "events": all_events})
         return result
     except OpenNotebookError:
         raise
@@ -629,7 +607,7 @@ async def summarize_section(state: DeepResearchState, config: RunnableConfig) ->
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Node 6: Compile Report
+# Node: Compile Report
 # ──────────────────────────────────────────────────────────────────────
 
 
@@ -682,56 +660,22 @@ async def compile_report(state: DeepResearchState, config: RunnableConfig) -> di
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Routing functions
-# ──────────────────────────────────────────────────────────────────────
-
-
-def route_after_evaluate(state: DeepResearchState) -> str:
-    """After evaluation: write if sufficient, search more if not."""
-    if state.get("is_material_sufficient", False) or state.get("section_search_count", 0) >= 5:
-        return "write_section"
-    return "search_section"
-
-
-def route_after_summarize(state: DeepResearchState) -> str:
-    """After summarize: continue to next section or compile."""
-    outline = state.get("outline", [])
-    idx = state.get("current_section_index", 0)
-    if idx >= len(outline):
-        return "compile_report"
-    return "search_section"
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Build the graph
+# Build the graph (simplified: parallel sections)
 # ──────────────────────────────────────────────────────────────────────
 
 deep_research_graph = StateGraph(DeepResearchState)
 
 # Add nodes
 deep_research_graph.add_node("plan_outline", plan_outline)
-deep_research_graph.add_node("search_section", search_section)
-deep_research_graph.add_node("evaluate_material", evaluate_material)
-deep_research_graph.add_node("write_section", write_section)
-deep_research_graph.add_node("summarize_section", summarize_section)
+deep_research_graph.add_node("process_all_sections", process_all_sections)
 deep_research_graph.add_node("compile_report", compile_report)
 
-# Add edges
+# Add edges: plan → parallel sections → compile → done
 deep_research_graph.add_edge(START, "plan_outline")
-deep_research_graph.add_edge("plan_outline", "search_section")
-deep_research_graph.add_edge("search_section", "evaluate_material")
-deep_research_graph.add_conditional_edges(
-    "evaluate_material",
-    route_after_evaluate,
-    ["write_section", "search_section"],
-)
-deep_research_graph.add_edge("write_section", "summarize_section")
-deep_research_graph.add_conditional_edges(
-    "summarize_section",
-    route_after_summarize,
-    ["search_section", "compile_report"],
-)
+deep_research_graph.add_edge("plan_outline", "process_all_sections")
+deep_research_graph.add_edge("process_all_sections", "compile_report")
 deep_research_graph.add_edge("compile_report", END)
 
 # Compile the graph
 graph = deep_research_graph.compile()
+
