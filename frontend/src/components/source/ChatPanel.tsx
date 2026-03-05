@@ -56,6 +56,10 @@ interface ChatPanelProps {
   notebookContextStats?: NotebookContextStats
   // Notebook ID for saving notes
   notebookId?: string
+  // Callback to refresh messages from the server (e.g. after Deep Research saves to chat history)
+  onRefreshMessages?: () => void
+  // Callback to add messages locally (e.g. inject completed Deep Research into chat before starting new one)
+  onAddLocalMessages?: (messages: SourceChatMessage[]) => void
 }
 
 export function ChatPanel({
@@ -75,7 +79,9 @@ export function ChatPanel({
   title,
   contextType = 'source',
   notebookContextStats,
-  notebookId
+  notebookId,
+  onRefreshMessages,
+  onAddLocalMessages
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -122,6 +128,11 @@ export function ChatPanel({
           setDeepResearchReport(status.final_report)
         }
         stopPolling()
+        // Refresh messages — the backend saves the report as chat messages
+        if (onRefreshMessages) {
+          // Small delay to let backend finish persisting to LangGraph state
+          setTimeout(() => onRefreshMessages(), 1000)
+        }
       } else if (status.status === 'failed') {
         setDeepResearchRunning(false)
         setDeepResearchError(status.error || 'Deep research failed')
@@ -134,7 +145,7 @@ export function ChatPanel({
     } catch (e) {
       console.warn('Failed to poll deep research status:', e)
     }
-  }, [stopPolling])
+  }, [stopPolling, onRefreshMessages])
 
   // Start polling for a job
   const startPolling = useCallback((jobId: string) => {
@@ -178,8 +189,12 @@ export function ChatPanel({
           }
           setDeepResearchJobId(active.job_id)
           setDeepResearchQuery(active.question || null)
-        } else if (active.status !== 'failed') {
-          // Any status other than 'completed' or 'failed' means still running
+        } else if (active.status === 'saved_to_chat' || active.status === 'failed' || active.status === 'cancelled') {
+          // saved_to_chat: report already in chat messages, no need to show card
+          // failed/cancelled: nothing to show
+          console.log('[DeepResearch] Skipping job:', active.job_id, 'status:', active.status)
+        } else {
+          // Any other status means still running
           console.log('[DeepResearch] Resuming running job:', active.job_id, 'status:', active.status)
           setDeepResearchMode(true)
           setDeepResearchRunning(true)
@@ -204,6 +219,22 @@ export function ChatPanel({
   }, [stopPolling])
 
   const handleDeepResearch = useCallback(async (question: string) => {
+    // If there's a completed report, inject it into messages before clearing
+    if (deepResearchReport && deepResearchQuery && onAddLocalMessages) {
+      onAddLocalMessages([
+        {
+          id: `dr-human-${Date.now()}`,
+          type: 'human' as const,
+          content: deepResearchQuery,
+        },
+        {
+          id: `dr-ai-${Date.now()}`,
+          type: 'ai' as const,
+          content: `[Deep Research]\n\n${deepResearchReport}`,
+        },
+      ])
+    }
+
     setDeepResearchRunning(true)
     setDeepResearchEvents([])
     setDeepResearchReport(null)
@@ -220,7 +251,7 @@ export function ChatPanel({
       setDeepResearchRunning(false)
       toast.error(msg)
     }
-  }, [modelOverride, notebookId, currentSessionId, startPolling])
+  }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages])
 
   const handleStopDeepResearch = useCallback(async () => {
     const jobId = deepResearchJobId

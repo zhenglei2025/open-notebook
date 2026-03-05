@@ -110,6 +110,8 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       loadingSessions={chat.loadingSessions}
       notebookContextStats={contextStats}
       notebookId={notebookId}
+      onRefreshMessages={() => chat.refetchCurrentSession()}
+      onAddLocalMessages={(msgs) => chat.addLocalMessages(msgs as any)}
     />
   )
 }

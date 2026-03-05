@@ -54,8 +54,57 @@ class DeepResearchStatusResponse(BaseModel):
 # ──────────────────────────────────────────────────────────────────────
 
 
+async def _save_report_to_chat_history(
+    session_id: str, question: str, report: str
+) -> bool:
+    """Save Deep Research query+report as chat messages in LangGraph session state.
+
+    Returns True if saved successfully, False otherwise.
+    """
+    try:
+        from langchain_core.messages import AIMessage, HumanMessage
+        from langchain_core.runnables import RunnableConfig
+        from open_notebook.graphs.chat import graph as chat_graph
+
+        full_session_id = (
+            session_id
+            if session_id.startswith("chat_session:")
+            else f"chat_session:{session_id}"
+        )
+        thread_config = RunnableConfig(
+            configurable={"thread_id": full_session_id}
+        )
+
+        # Add the user question as a HumanMessage
+        await asyncio.to_thread(
+            chat_graph.update_state,
+            thread_config,
+            {"messages": [HumanMessage(content=question)]},
+        )
+
+        # Add the report as an AIMessage (prefixed to distinguish from regular chat)
+        report_content = f"[Deep Research]\n\n{report}"
+        await asyncio.to_thread(
+            chat_graph.update_state,
+            thread_config,
+            {"messages": [AIMessage(content=report_content)]},
+        )
+
+        logger.info(
+            f"Saved Deep Research report to chat history for session {session_id}"
+        )
+        return True
+    except Exception as e:
+        # Non-fatal: log but don't fail the job
+        logger.warning(
+            f"Failed to save Deep Research report to chat history: {e}"
+        )
+        return False
+
+
 async def _run_deep_research_background(
-    job_id: str, question: str, notebook_id: Optional[str], model_id: Optional[str], user_db: Optional[str]
+    job_id: str, question: str, notebook_id: Optional[str], model_id: Optional[str], user_db: Optional[str],
+    session_id: Optional[str] = None,
 ) -> None:
     """Run deep research graph in background, persisting results to DB."""
     # Explicitly restore user database context for the background task
@@ -93,6 +142,15 @@ async def _run_deep_research_background(
                 "UPDATE $job_id SET status = 'completed', final_report = $report, updated = time::now()",
                 {"job_id": ensure_record_id(job_id), "report": final_report},
             )
+            # Save query + report as chat messages in LangGraph session state
+            if session_id:
+                saved = await _save_report_to_chat_history(session_id, question, final_report)
+                if saved:
+                    # Mark as saved so getActiveDeepResearch won't reload it as a card
+                    await repo_query(
+                        "UPDATE $job_id SET status = 'saved_to_chat', updated = time::now()",
+                        {"job_id": ensure_record_id(job_id)},
+                    )
         else:
             await repo_query(
                 "UPDATE $job_id SET status = 'completed', updated = time::now()",
@@ -169,7 +227,8 @@ async def start_deep_research(request: DeepResearchRequest):
         user_db = get_current_user_db()
         task = asyncio.create_task(
             _run_deep_research_background(
-                job_id, request.question, request.notebook_id, request.model_id, user_db
+                job_id, request.question, request.notebook_id, request.model_id, user_db,
+                session_id=request.session_id,
             )
         )
         _running_tasks[job_id] = task

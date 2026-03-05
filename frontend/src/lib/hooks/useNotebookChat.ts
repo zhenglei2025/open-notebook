@@ -34,6 +34,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Pending model override for when user changes model before a session exists
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null)
 
+  // Add messages to the local state (e.g. for injecting Deep Research results before refresh)
+  const addLocalMessages = useCallback((newMessages: NotebookChatMessage[]) => {
+    setMessages(prev => [...prev, ...newMessages])
+  }, [])
+
   // Fetch sessions for this notebook
   const {
     data: sessions = [],
@@ -318,6 +323,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     switchSession,
     sendMessage,
     setModelOverride,
-    refetchSessions
+    refetchSessions,
+    refetchCurrentSession,
+    addLocalMessages
   }
 }
