@@ -39,6 +39,26 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setMessages(prev => [...prev, ...newMessages])
   }, [])
 
+  // Ensure a session exists, creating one if needed. Returns session ID or null on failure.
+  const ensureSession = useCallback(async (title: string): Promise<string | null> => {
+    if (currentSessionId) return currentSessionId
+    try {
+      const newSession = await chatApi.createSession({
+        notebook_id: notebookId,
+        title,
+        model_override: pendingModelOverride ?? undefined
+      })
+      setCurrentSessionId(newSession.id)
+      setPendingModelOverride(null)
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.notebookChatSessions(notebookId)
+      })
+      return newSession.id
+    } catch {
+      return null
+    }
+  }, [currentSessionId, notebookId, pendingModelOverride, queryClient])
+
   // Fetch sessions for this notebook
   const {
     data: sessions = [],
@@ -325,6 +345,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setModelOverride,
     refetchSessions,
     refetchCurrentSession,
-    addLocalMessages
+    addLocalMessages,
+    ensureSession
   }
 }

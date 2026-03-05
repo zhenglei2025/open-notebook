@@ -363,7 +363,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
 # Constants
 # ──────────────────────────────────────────────────────────────────────
 
-MAX_SEARCH_ROUNDS = 3
+MAX_SEARCH_ROUNDS = 1
 MAX_WRITE_MATERIALS = 20
 
 
@@ -619,6 +619,12 @@ async def process_all_sections(
 async def compile_report(state: DeepResearchState, config: RunnableConfig) -> dict:
     """Compile all section drafts into a final cohesive report."""
     try:
+        # Emit compiling event so the frontend can show the indicator immediately
+        compiling_events = _emit_event(state, "compiling", {})
+        await _update_job(state, {"events": compiling_events})
+        # Update state with the new events list for subsequent _emit_event calls
+        state = {**state, "events": compiling_events}
+
         outline = state["outline"]
         drafts = state["section_drafts"]
 

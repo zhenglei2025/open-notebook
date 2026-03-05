@@ -6,7 +6,7 @@
 import apiClient from './client'
 
 export interface DeepResearchEvent {
-    type: 'outline' | 'search_done' | 'evaluate' | 'write_done' | 'summarize_done' | 'complete' | 'report' | 'error' | 'done'
+    type: 'outline' | 'search_done' | 'evaluate' | 'write_done' | 'summarize_done' | 'compiling' | 'complete' | 'report' | 'error' | 'done'
     // outline
     sections?: { title: string; description: string }[]
     reasoning?: string

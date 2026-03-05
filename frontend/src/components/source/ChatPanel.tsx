@@ -60,6 +60,8 @@ interface ChatPanelProps {
   onRefreshMessages?: () => void
   // Callback to add messages locally (e.g. inject completed Deep Research into chat before starting new one)
   onAddLocalMessages?: (messages: SourceChatMessage[]) => void
+  // Callback to ensure a chat session exists, returns session ID
+  onEnsureSession?: (title: string) => Promise<string | null>
 }
 
 export function ChatPanel({
@@ -81,7 +83,8 @@ export function ChatPanel({
   notebookContextStats,
   notebookId,
   onRefreshMessages,
-  onAddLocalMessages
+  onAddLocalMessages,
+  onEnsureSession
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -122,7 +125,7 @@ export function ChatPanel({
       }
 
       // Check completion
-      if (status.status === 'completed') {
+      if (status.status === 'completed' || status.status === 'saved_to_chat') {
         setDeepResearchRunning(false)
         if (status.final_report) {
           setDeepResearchReport(status.final_report)
@@ -131,7 +134,7 @@ export function ChatPanel({
         // Refresh messages — the backend saves the report as chat messages
         if (onRefreshMessages) {
           // Small delay to let backend finish persisting to LangGraph state
-          setTimeout(() => onRefreshMessages(), 1000)
+          setTimeout(() => onRefreshMessages(), status.status === 'saved_to_chat' ? 200 : 1000)
         }
       } else if (status.status === 'failed') {
         setDeepResearchRunning(false)
@@ -242,7 +245,14 @@ export function ChatPanel({
     eventsCursorRef.current = 0
 
     try {
-      const job = await startDeepResearch(question, notebookId, modelOverride, currentSessionId || undefined)
+      // Ensure a session exists so the backend can save the report to chat history
+      let sessionId = currentSessionId
+      if (!sessionId && onEnsureSession) {
+        const shortTitle = question.length > 30 ? `${question.substring(0, 30)}...` : question
+        sessionId = await onEnsureSession(shortTitle)
+      }
+
+      const job = await startDeepResearch(question, notebookId, modelOverride, sessionId || undefined)
       setDeepResearchJobId(job.job_id)
       startPolling(job.job_id)
     } catch (e) {
@@ -251,7 +261,7 @@ export function ChatPanel({
       setDeepResearchRunning(false)
       toast.error(msg)
     }
-  }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages])
+  }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages, onEnsureSession])
 
   const handleStopDeepResearch = useCallback(async () => {
     const jobId = deepResearchJobId

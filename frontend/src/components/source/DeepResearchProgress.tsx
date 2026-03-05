@@ -48,6 +48,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
     // Build section progress from events
     const sections: SectionProgress[] = []
     let outlineReasoning = ''
+    let isCompiling = false
 
     for (const event of events) {
         switch (event.type) {
@@ -87,6 +88,9 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 if (event.section_index !== undefined && sections[event.section_index]) {
                     sections[event.section_index].summarized = true
                 }
+                break
+            case 'compiling':
+                isCompiling = true
                 break
         }
     }
@@ -204,7 +208,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
             ))}
 
             {/* Compiling indicator */}
-            {sections.length > 0 && sections.every(s => s.summarized) && isRunning && (
+            {!report && (isCompiling || (sections.length > 0 && sections.every(s => s.summarized) && isRunning)) && (
                 <div className="flex items-center gap-1.5 text-xs text-primary">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     📋 正在汇编最终报告...
