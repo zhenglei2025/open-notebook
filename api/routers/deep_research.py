@@ -32,6 +32,7 @@ class DeepResearchRequest(BaseModel):
     notebook_id: Optional[str] = Field(None, description="Notebook ID to scope search")
     session_id: Optional[str] = Field(None, description="Chat session ID to associate with")
     model_id: Optional[str] = Field(None, description="Optional model override")
+    research_type: str = Field("deep", description="Research type: 'deep' or 'quick'")
 
 
 class DeepResearchJobResponse(BaseModel):
@@ -55,7 +56,7 @@ class DeepResearchStatusResponse(BaseModel):
 
 
 async def _save_report_to_chat_history(
-    session_id: str, question: str, report: str
+    session_id: str, question: str, report: str, research_type: str = "deep"
 ) -> bool:
     """Save Deep Research query+report as chat messages in LangGraph session state.
 
@@ -83,7 +84,7 @@ async def _save_report_to_chat_history(
         )
 
         # Add the report as an AIMessage (prefixed to distinguish from regular chat)
-        report_content = f"[Deep Research]\n\n{report}"
+        report_content = f"[{'Quick' if research_type == 'quick' else 'Deep'} Research]\n\n{report}"
         await asyncio.to_thread(
             chat_graph.update_state,
             thread_config,
@@ -104,7 +105,7 @@ async def _save_report_to_chat_history(
 
 async def _run_deep_research_background(
     job_id: str, question: str, notebook_id: Optional[str], model_id: Optional[str], user_db: Optional[str],
-    session_id: Optional[str] = None,
+    session_id: Optional[str] = None, research_type: str = "deep",
 ) -> None:
     """Run deep research graph in background, persisting results to DB."""
     # Explicitly restore user database context for the background task
@@ -120,6 +121,7 @@ async def _run_deep_research_background(
                 "question": question,
                 "notebook_id": notebook_id,
                 "job_id": job_id,
+                "research_type": research_type,
                 "outline": None,
                 "current_section_index": 0,
                 "section_search_count": 0,
@@ -144,7 +146,7 @@ async def _run_deep_research_background(
             )
             # Save query + report as chat messages in LangGraph session state
             if session_id:
-                saved = await _save_report_to_chat_history(session_id, question, final_report)
+                saved = await _save_report_to_chat_history(session_id, question, final_report, research_type)
                 if saved:
                     # Mark as saved so getActiveDeepResearch won't reload it as a card
                     await repo_query(
@@ -157,7 +159,7 @@ async def _run_deep_research_background(
                 {"job_id": ensure_record_id(job_id)},
             )
 
-        logger.info(f"Deep Research job {job_id} completed successfully")
+        logger.info(f"{research_type.capitalize()} Research job {job_id} completed successfully")
 
     except asyncio.CancelledError:
         logger.info(f"Deep Research job {job_id} was cancelled")
@@ -228,7 +230,7 @@ async def start_deep_research(request: DeepResearchRequest):
         task = asyncio.create_task(
             _run_deep_research_background(
                 job_id, request.question, request.notebook_id, request.model_id, user_db,
-                session_id=request.session_id,
+                session_id=request.session_id, research_type=request.research_type,
             )
         )
         _running_tasks[job_id] = task

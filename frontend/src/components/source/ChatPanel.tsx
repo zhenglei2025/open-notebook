@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope, StopCircle } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope, StopCircle, Zap } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -96,6 +96,7 @@ export function ChatPanel({
 
   // Deep Research state
   const [deepResearchMode, setDeepResearchMode] = useState(false)
+  const [quickResearchMode, setQuickResearchMode] = useState(false)
   const [deepResearchRunning, setDeepResearchRunning] = useState(false)
   const [deepResearchEvents, setDeepResearchEvents] = useState<DeepResearchEvent[]>([])
   const [deepResearchReport, setDeepResearchReport] = useState<string | null>(null)
@@ -233,7 +234,7 @@ export function ChatPanel({
         {
           id: `dr-ai-${Date.now()}`,
           type: 'ai' as const,
-          content: `[Deep Research]\n\n${deepResearchReport}`,
+          content: `[${quickResearchMode ? 'Quick' : 'Deep'} Research]\n\n${deepResearchReport}`,
         },
       ])
     }
@@ -252,7 +253,8 @@ export function ChatPanel({
         sessionId = await onEnsureSession(shortTitle)
       }
 
-      const job = await startDeepResearch(question, notebookId, modelOverride, sessionId || undefined)
+      const researchType = quickResearchMode ? 'quick' : 'deep'
+      const job = await startDeepResearch(question, notebookId, modelOverride, sessionId || undefined, researchType)
       setDeepResearchJobId(job.job_id)
       startPolling(job.job_id)
     } catch (e) {
@@ -261,13 +263,14 @@ export function ChatPanel({
       setDeepResearchRunning(false)
       toast.error(msg)
     }
-  }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages, onEnsureSession])
+  }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages, onEnsureSession, quickResearchMode])
 
   const handleStopDeepResearch = useCallback(async () => {
     const jobId = deepResearchJobId
     stopPolling()
     setDeepResearchRunning(false)
     setDeepResearchMode(false)
+    setQuickResearchMode(false)
 
     if (jobId) {
       try {
@@ -301,7 +304,7 @@ export function ChatPanel({
 
   const handleSend = () => {
     if (input.trim() && !isStreaming && !deepResearchRunning) {
-      if (deepResearchMode) {
+      if (deepResearchMode || quickResearchMode) { // Updated condition
         setDeepResearchQuery(input.trim())
         handleDeepResearch(input.trim())
       } else {
@@ -466,6 +469,7 @@ export function ChatPanel({
                       report={deepResearchReport}
                       error={deepResearchError}
                       notebookId={notebookId}
+                      researchType={quickResearchMode ? 'quick' : 'deep'}
                     />
                   </div>
                 </div>
@@ -519,30 +523,68 @@ export function ChatPanel({
                 <span className="text-xs text-muted-foreground">{t.chat.model}</span>
                 <div className="flex items-center gap-2">
                   {contextType === 'notebook' && (
-                    <Button
-                      variant={deepResearchRunning ? 'destructive' : deepResearchMode ? 'default' : 'outline'}
-                      size="sm"
-                      className={`h-7 text-xs gap-1.5 ${deepResearchRunning
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : deepResearchMode
-                          ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                          : 'hover:border-purple-400 hover:text-purple-600'
-                        }`}
-                      onClick={deepResearchRunning ? handleStopDeepResearch : () => setDeepResearchMode(!deepResearchMode)}
-                      disabled={isStreaming}
-                    >
-                      {deepResearchRunning ? (
-                        <>
-                          <StopCircle className="h-3 w-3" />
-                          停止研究
-                        </>
-                      ) : (
-                        <>
-                          <Microscope className="h-3 w-3" />
-                          Deep Research
-                        </>
-                      )}
-                    </Button>
+                    <>
+                      <Button
+                        variant={deepResearchRunning && quickResearchMode ? 'destructive' : quickResearchMode ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs gap-1.5 ${deepResearchRunning && quickResearchMode
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : quickResearchMode
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'hover:border-blue-400 hover:text-blue-600'
+                          }`}
+                        onClick={deepResearchRunning && quickResearchMode
+                          ? handleStopDeepResearch
+                          : () => {
+                            setQuickResearchMode(!quickResearchMode)
+                            if (!quickResearchMode) setDeepResearchMode(false)
+                          }
+                        }
+                        disabled={isStreaming || (deepResearchRunning && !quickResearchMode)}
+                      >
+                        {deepResearchRunning && quickResearchMode ? (
+                          <>
+                            <StopCircle className="h-3 w-3" />
+                            停止研究
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-3 w-3" />
+                            Quick Research
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant={deepResearchRunning && deepResearchMode ? 'destructive' : deepResearchMode ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs gap-1.5 ${deepResearchRunning && deepResearchMode
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : deepResearchMode
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                            : 'hover:border-purple-400 hover:text-purple-600'
+                          }`}
+                        onClick={deepResearchRunning && deepResearchMode
+                          ? handleStopDeepResearch
+                          : () => {
+                            setDeepResearchMode(!deepResearchMode)
+                            if (!deepResearchMode) setQuickResearchMode(false)
+                          }
+                        }
+                        disabled={isStreaming || (deepResearchRunning && !deepResearchMode)}
+                      >
+                        {deepResearchRunning && deepResearchMode ? (
+                          <>
+                            <StopCircle className="h-3 w-3" />
+                            停止研究
+                          </>
+                        ) : (
+                          <>
+                            <Microscope className="h-3 w-3" />
+                            Deep Research
+                          </>
+                        )}
+                      </Button>
+                    </>
                   )}
                   <ModelSelector
                     currentModel={modelOverride}
@@ -570,13 +612,17 @@ export function ChatPanel({
                 onClick={handleSend}
                 disabled={!input.trim() || isStreaming || deepResearchRunning}
                 size="icon"
-                className={`h-[40px] w-[40px] flex-shrink-0 ${deepResearchMode && !isStreaming && !deepResearchRunning
-                  ? 'bg-purple-600 hover:bg-purple-700'
-                  : ''
+                className={`h-[40px] w-[40px] flex-shrink-0 ${quickResearchMode && !isStreaming && !deepResearchRunning
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : deepResearchMode && !isStreaming && !deepResearchRunning
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : ''
                   }`}
               >
                 {isStreaming || deepResearchRunning ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
+                ) : quickResearchMode ? (
+                  <Zap className="h-4 w-4" />
                 ) : deepResearchMode ? (
                   <Microscope className="h-4 w-4" />
                 ) : (

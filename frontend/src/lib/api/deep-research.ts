@@ -57,12 +57,14 @@ export async function startDeepResearch(
     notebookId?: string,
     modelId?: string,
     sessionId?: string,
+    researchType: string = 'deep',
 ): Promise<DeepResearchJobResponse> {
     const response = await apiClient.post<DeepResearchJobResponse>('/deep-research', {
         question,
         notebook_id: notebookId || null,
         model_id: modelId || null,
         session_id: sessionId || null,
+        research_type: researchType,
     })
     return response.data
 }

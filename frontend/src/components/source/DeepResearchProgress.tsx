@@ -17,6 +17,7 @@ interface DeepResearchProgressProps {
     report: string | null
     error: string | null
     notebookId?: string
+    researchType?: string
 }
 
 interface SectionProgress {
@@ -30,7 +31,7 @@ interface SectionProgress {
     summarized: boolean
 }
 
-export function DeepResearchProgress({ events, isRunning, report, error, notebookId }: DeepResearchProgressProps) {
+export function DeepResearchProgress({ events, isRunning, report, error, notebookId, researchType = 'deep' }: DeepResearchProgressProps) {
     const { t } = useTranslation()
     const { openModal } = useModalManager()
 
@@ -95,6 +96,9 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
         }
     }
 
+    // Determine label
+    const researchLabel = researchType === 'quick' ? 'Quick Research' : 'Deep Research'
+
     // Show report if complete
     if (report) {
         const markdownWithCompactRefs = convertReferencesToCompactMarkdown(report, t.common.references)
@@ -104,7 +108,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
             <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
                     <CheckCircle2 className="h-4 w-4" />
-                    Deep Research 完成
+                    {researchLabel} 完成
                 </div>
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all">
                     <ReactMarkdown
@@ -142,7 +146,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium">
                 <Brain className="h-4 w-4 text-primary" />
-                Deep Research
+                {researchLabel}
                 {isRunning && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
             </div>
 

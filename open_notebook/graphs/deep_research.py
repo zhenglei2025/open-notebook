@@ -73,6 +73,7 @@ class DeepResearchState(TypedDict):
     question: str
     notebook_id: Optional[str]  # Scope search to this notebook
     job_id: Optional[str]  # Persistent job record ID
+    research_type: str  # "deep" or "quick"
     outline: Optional[List[Dict[str, Any]]]  # List of section dicts
     current_section_index: int
     section_search_count: int
@@ -391,14 +392,16 @@ async def _process_single_section(
         event = {"type": event_type, **data}
         events.append(event)
 
-    # ── Search + Evaluate loop (max MAX_SEARCH_ROUNDS rounds) ──
+    # ── Search + Evaluate loop ──
+    is_quick = state.get("research_type") == "quick"
+    max_rounds = 1 if is_quick else MAX_SEARCH_ROUNDS
     all_results: List[Dict[str, Any]] = []
     existing_ids: set = set()
     queries = list(section["search_queries"])
     search_count = 0
     is_sufficient = False
 
-    while search_count < MAX_SEARCH_ROUNDS and not is_sufficient:
+    while search_count < max_rounds and not is_sufficient:
         # Search
         new_result_count = 0
         for query in queries:
@@ -435,7 +438,18 @@ async def _process_single_section(
             "events": list(state.get("events", [])) + events,
         })
 
-        # Evaluate
+        # Evaluate (skip for quick research — use all results directly)
+        if is_quick:
+            _add_event("evaluate", {
+                "section": section_title,
+                "section_index": section_index,
+                "sufficient": True,
+                "reason": "Quick research: skipping evaluation",
+                "relevant_count": len(all_results),
+                "new_queries": [],
+            })
+            break
+
         if not all_results:
             logger.info(f"Deep Research: no results for '{section_title}', proceeding to write")
             _add_event("evaluate", {
@@ -467,7 +481,7 @@ async def _process_single_section(
         relevant_indices = {item.result_index for item in evaluation.relevance if item.relevant}
         all_results = [r for i, r in enumerate(all_results) if i in relevant_indices]
 
-        is_sufficient = evaluation.is_sufficient or search_count >= MAX_SEARCH_ROUNDS
+        is_sufficient = evaluation.is_sufficient or search_count >= max_rounds
         queries = evaluation.new_queries if not is_sufficient else []
 
         logger.info(
@@ -534,29 +548,38 @@ async def _process_single_section(
         "events": list(state.get("events", [])) + events,
     })
 
-    # ── Summarize section ──
-    summarize_prompt = Prompter(prompt_template="deep_research/summarize").render(
-        data={
-            "section_title": section["title"],
-            "section_content": draft,
-        }
-    )
+    # ── Summarize section (skip for quick research) ──
+    summary = ""
+    if not is_quick:
+        summarize_prompt = Prompter(prompt_template="deep_research/summarize").render(
+            data={
+                "section_title": section["title"],
+                "section_content": draft,
+            }
+        )
 
-    model = await _provision_model(summarize_prompt, config, max_tokens=512)
-    ai_message = await model.ainvoke(summarize_prompt)
-    content = extract_text_content(ai_message.content)
-    summary = clean_thinking_content(content).strip()
+        model = await _provision_model(summarize_prompt, config, max_tokens=512)
+        ai_message = await model.ainvoke(summarize_prompt)
+        content = extract_text_content(ai_message.content)
+        summary = clean_thinking_content(content).strip()
 
-    logger.info(
-        f"Deep Research: summarized [{section_index}] "
-        f"'{section_title}': {summary[:80]}..."
-    )
+        logger.info(
+            f"Deep Research: summarized [{section_index}] "
+            f"'{section_title}': {summary[:80]}..."
+        )
 
-    _add_event("summarize_done", {
-        "section": section_title,
-        "section_index": section_index,
-        "summary": summary,
-    })
+        _add_event("summarize_done", {
+            "section": section_title,
+            "section_index": section_index,
+            "summary": summary,
+        })
+    else:
+        # For quick research, emit summarize_done immediately so frontend shows completion
+        _add_event("summarize_done", {
+            "section": section_title,
+            "section_index": section_index,
+            "summary": "",
+        })
 
     return {
         "section_index": section_index,
@@ -619,36 +642,47 @@ async def process_all_sections(
 async def compile_report(state: DeepResearchState, config: RunnableConfig) -> dict:
     """Compile all section drafts into a final cohesive report."""
     try:
-        # Emit compiling event so the frontend can show the indicator immediately
-        compiling_events = _emit_event(state, "compiling", {})
-        await _update_job(state, {"events": compiling_events})
-        # Update state with the new events list for subsequent _emit_event calls
-        state = {**state, "events": compiling_events}
-
+        is_quick = state.get("research_type") == "quick"
         outline = state["outline"]
         drafts = state["section_drafts"]
 
-        # Format the drafts with section headers
-        formatted_drafts = []
-        for i, (section, draft) in enumerate(zip(outline, drafts)):
-            formatted_drafts.append(f"## {section['title']}\n\n{draft}")
-        all_drafts = "\n\n---\n\n".join(formatted_drafts)
+        if is_quick:
+            # Quick Research: directly concatenate drafts (no LLM compile)
+            compiling_events = _emit_event(state, "compiling", {})
+            await _update_job(state, {"events": compiling_events})
+            state = {**state, "events": compiling_events}
 
-        prompt = Prompter(prompt_template="deep_research/compile").render(
-            data={
-                "question": state["question"],
-                "outline": _format_outline(outline),
-                "drafts": all_drafts,
-            }
-        )
+            parts = []
+            for i, (section, draft) in enumerate(zip(outline, drafts)):
+                parts.append(f"## {section['title']}\n\n{draft}")
+            final_report = "\n\n---\n\n".join(parts)
+        else:
+            # Deep Research: full LLM compile
+            compiling_events = _emit_event(state, "compiling", {})
+            await _update_job(state, {"events": compiling_events})
+            state = {**state, "events": compiling_events}
 
-        model = await _provision_model(prompt, config, max_tokens=16384)
-        ai_message = await model.ainvoke(prompt)
+            formatted_drafts = []
+            for i, (section, draft) in enumerate(zip(outline, drafts)):
+                formatted_drafts.append(f"## {section['title']}\n\n{draft}")
+            all_drafts = "\n\n---\n\n".join(formatted_drafts)
 
-        content = extract_text_content(ai_message.content)
-        final_report = clean_thinking_content(content)
+            prompt = Prompter(prompt_template="deep_research/compile").render(
+                data={
+                    "question": state["question"],
+                    "outline": _format_outline(outline),
+                    "drafts": all_drafts,
+                }
+            )
 
-        logger.info(f"Deep Research: compiled final report ({len(final_report)} chars)")
+            model = await _provision_model(prompt, config, max_tokens=16384)
+            ai_message = await model.ainvoke(prompt)
+
+            content = extract_text_content(ai_message.content)
+            final_report = clean_thinking_content(content)
+
+        research_label = "Quick" if is_quick else "Deep"
+        logger.info(f"{research_label} Research: compiled final report ({len(final_report)} chars)")
 
         result = {
             "final_report": final_report,
