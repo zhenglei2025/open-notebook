@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { AlertCircle, KeyRound, CheckCircle2 } from 'lucide-react'
+import { AlertCircle, KeyRound, CheckCircle2, UserPlus } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import apiClient from '@/lib/api/client'
@@ -33,6 +33,15 @@ export function LoginForm() {
   const [cpLoading, setCpLoading] = useState(false)
   const [cpError, setCpError] = useState<string | null>(null)
   const [cpSuccess, setCpSuccess] = useState(false)
+
+  // Register state
+  const [registerOpen, setRegisterOpen] = useState(false)
+  const [regUsername, setRegUsername] = useState('')
+  const [regPassword, setRegPassword] = useState('')
+  const [regConfirmPassword, setRegConfirmPassword] = useState('')
+  const [regLoading, setRegLoading] = useState(false)
+  const [regError, setRegError] = useState<string | null>(null)
+  const [regSuccess, setRegSuccess] = useState(false)
 
   // Load config info for debugging
   useEffect(() => {
@@ -198,6 +207,60 @@ export function LoginForm() {
     setChangePasswordOpen(true)
   }
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRegError(null)
+    setRegSuccess(false)
+
+    if (regPassword !== regConfirmPassword) {
+      setRegError(t.auth.registerPasswordMismatch || '两次输入的密码不一致')
+      return
+    }
+
+    if (!regUsername.trim() || regUsername.trim().length < 2) {
+      setRegError(t.auth.registerUsernameTooShort || '用户名至少需要2个字符')
+      return
+    }
+
+    if (!regPassword.trim() || regPassword.trim().length < 4) {
+      setRegError(t.auth.registerPasswordTooShort || '密码至少需要4个字符')
+      return
+    }
+
+    setRegLoading(true)
+    try {
+      await apiClient.post('/auth/register', {
+        username: regUsername.trim(),
+        password: regPassword,
+      })
+      setRegSuccess(true)
+      setRegError(null)
+      // Pre-fill login form with registered username
+      setUsername(regUsername.trim())
+      setTimeout(() => {
+        setRegisterOpen(false)
+      }, 1500)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      if (detail && typeof detail === 'string' && detail.includes('already exists')) {
+        setRegError(t.auth.registerUserExists || '该用户名已被注册')
+      } else {
+        setRegError(detail || t.auth.registerFailed || '注册失败')
+      }
+    } finally {
+      setRegLoading(false)
+    }
+  }
+
+  const openRegister = () => {
+    setRegUsername('')
+    setRegPassword('')
+    setRegConfirmPassword('')
+    setRegError(null)
+    setRegSuccess(false)
+    setRegisterOpen(true)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -243,6 +306,16 @@ export function LoginForm() {
               disabled={isLoading || !username.trim() || !password.trim()}
             >
               {isLoading ? t.auth.signingIn : t.auth.signIn}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground"
+              onClick={openRegister}
+            >
+              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              {t.auth.register || '注册账号'}
             </Button>
 
             <Button
@@ -343,6 +416,80 @@ export function LoginForm() {
                 disabled={cpLoading || !cpUsername.trim() || !cpCurrentPassword.trim() || !cpNewPassword.trim() || !cpConfirmPassword.trim()}
               >
                 {cpLoading ? t.auth.changingPassword : t.common.confirm}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register Dialog */}
+      <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t.auth.registerTitle || '注册新账号'}</DialogTitle>
+            <DialogDescription>{t.auth.registerDesc || '输入用户名和密码创建新账号'}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <Input
+                type="text"
+                placeholder={t.auth.usernamePlaceholder || 'Username'}
+                value={regUsername}
+                onChange={(e) => setRegUsername(e.target.value)}
+                disabled={regLoading}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Input
+                type="password"
+                placeholder={t.auth.passwordPlaceholder || '密码'}
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                disabled={regLoading}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <Input
+                type="password"
+                placeholder={t.auth.confirmNewPassword || '确认密码'}
+                value={regConfirmPassword}
+                onChange={(e) => setRegConfirmPassword(e.target.value)}
+                disabled={regLoading}
+                autoComplete="new-password"
+              />
+            </div>
+
+            {regError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {regError}
+              </div>
+            )}
+
+            {regSuccess && (
+              <div className="flex items-center gap-2 text-green-600 text-sm">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                {t.auth.registerSuccess || '注册成功，即将返回登录'}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setRegisterOpen(false)}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={regLoading || !regUsername.trim() || !regPassword.trim() || !regConfirmPassword.trim()}
+              >
+                {regLoading ? (t.auth.registering || '正在注册...') : (t.auth.register || '注册')}
               </Button>
             </div>
           </form>

@@ -150,6 +150,7 @@ app.add_middleware(
         "/api/auth/status",
         "/api/auth/login",
         "/api/auth/change-password",
+        "/api/auth/register",
         "/api/config",
     ],
 )

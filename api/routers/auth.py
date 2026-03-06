@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
-from api.user_management import authenticate_user, generate_login_token, change_password
+from api.user_management import authenticate_user, generate_login_token, change_password, create_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -80,3 +80,38 @@ async def change_password_endpoint(request: ChangePasswordRequest):
 
     logger.info(f"Password changed for user '{request.username}'")
     return {"message": "Password changed successfully"}
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/register")
+async def register(request: RegisterRequest):
+    """
+    Register a new normal user (non-admin). Public endpoint.
+    """
+    if not request.username or not request.username.strip():
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    if len(request.username.strip()) < 2:
+        raise HTTPException(
+            status_code=400, detail="Username must be at least 2 characters"
+        )
+
+    if not request.password or len(request.password) < 4:
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 4 characters"
+        )
+
+    try:
+        user = await create_user(request.username.strip(), request.password, is_admin=False)
+        logger.info(f"New user '{request.username}' registered via self-registration")
+        return {"message": f"User '{request.username}' registered successfully", "user": user}
+    except Exception as e:
+        if "already contains" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(
+                status_code=409, detail=f"User '{request.username}' already exists"
+            )
+        raise HTTPException(status_code=500, detail=str(e))
