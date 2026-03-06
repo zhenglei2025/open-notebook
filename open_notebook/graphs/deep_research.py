@@ -363,7 +363,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
 # Constants
 # ──────────────────────────────────────────────────────────────────────
 
-MAX_SEARCH_ROUNDS = 1
+MAX_SEARCH_ROUNDS = 3
 MAX_WRITE_MATERIALS = 20
 
 
