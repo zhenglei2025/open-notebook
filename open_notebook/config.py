@@ -13,5 +13,6 @@ UPLOADS_FOLDER = f"{DATA_FOLDER}/uploads"
 os.makedirs(UPLOADS_FOLDER, exist_ok=True)
 
 # TIKTOKEN CACHE FOLDER
-TIKTOKEN_CACHE_DIR = f"{DATA_FOLDER}/tiktoken-cache"
+#TIKTOKEN_CACHE_DIR = f"{DATA_FOLDER}/tiktoken-cache"
+TIKTOKEN_CACHE_DIR = "/app/tiktoken_cache"
 os.makedirs(TIKTOKEN_CACHE_DIR, exist_ok=True)
