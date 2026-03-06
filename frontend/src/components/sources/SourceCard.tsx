@@ -178,7 +178,19 @@ export function SourceCard({
   const sourceType = getSourceType(source)
   const SourceTypeIcon = SOURCE_TYPE_ICONS[sourceType]
 
-  const title = source.title || t.sources.untitledSource
+  // Use source title, but fall back to original filename/URL for processing/failed sources
+  const getDisplayTitle = () => {
+    if (source.title && source.title !== 'Processing...') return source.title
+    // Extract original filename from file_path
+    if (source.asset?.file_path) {
+      const parts = source.asset.file_path.split('/')
+      return parts[parts.length - 1] || source.asset.file_path
+    }
+    // Use URL if available
+    if (source.asset?.url) return source.asset.url
+    return source.title || t.sources.untitledSource
+  }
+  const title = getDisplayTitle()
 
   const handleRetry = () => {
     if (onRetry) {
@@ -367,7 +379,10 @@ export function SourceCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRetry}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleRetry()
+              }}
               disabled={!onRetry}
               className="h-7 text-xs"
             >
