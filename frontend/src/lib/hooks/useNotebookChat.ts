@@ -247,11 +247,14 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined)
       })
 
-      // Update messages with API response
+      // Update messages with API response (authoritative — includes all messages)
       setMessages(response.messages)
 
-      // Refetch current session to get updated data
-      await refetchCurrentSession()
+      // Invalidate session query so it refreshes in background (do NOT await refetch
+      // because the useEffect([currentSession]) would overwrite messages with stale cache)
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.notebookChatSession(sessionId!)
+      })
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }, message?: string };
       console.error('Error sending message:', error)
@@ -267,7 +270,6 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     currentSession,
     pendingModelOverride,
     buildContext,
-    refetchCurrentSession,
     queryClient,
     t
   ])
