@@ -128,14 +128,30 @@ export function ChatPanel({
       // Check completion
       if (status.status === 'completed' || status.status === 'saved_to_chat') {
         setDeepResearchRunning(false)
-        if (status.final_report) {
-          setDeepResearchReport(status.final_report)
-        }
         stopPolling()
-        // Refresh messages — the backend saves the report as chat messages
-        if (onRefreshMessages) {
-          // Small delay to let backend finish persisting to LangGraph state
-          setTimeout(() => onRefreshMessages(), status.status === 'saved_to_chat' ? 200 : 1000)
+
+        if (status.status === 'saved_to_chat') {
+          // Report is already in regular chat messages — clear the research card
+          // so it doesn't block visibility of subsequent chat messages
+          if (onRefreshMessages) {
+            setTimeout(() => {
+              onRefreshMessages()
+              // Clear the card AFTER messages refresh so the report shows in regular messages
+              setDeepResearchReport(null)
+              setDeepResearchEvents([])
+              setDeepResearchQuery(null)
+              setDeepResearchMode(false)
+              setQuickResearchMode(false)
+            }, 200)
+          }
+        } else {
+          // completed but not yet saved — show the report in the research card
+          if (status.final_report) {
+            setDeepResearchReport(status.final_report)
+          }
+          if (onRefreshMessages) {
+            setTimeout(() => onRefreshMessages(), 1000)
+          }
         }
       } else if (status.status === 'failed') {
         setDeepResearchRunning(false)
