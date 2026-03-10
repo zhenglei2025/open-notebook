@@ -6,7 +6,7 @@
 import apiClient from './client'
 
 export interface DeepResearchEvent {
-    type: 'outline' | 'search_done' | 'evaluate' | 'write_done' | 'summarize_done' | 'compiling' | 'complete' | 'report' | 'error' | 'done'
+    type: 'outline' | 'search_done' | 'evaluate' | 'write_done' | 'summarize_done' | 'compiling' | 'compile_section_done' | 'complete' | 'report' | 'error' | 'done'
     // outline
     sections?: { title: string; description: string }[]
     reasoning?: string
@@ -25,6 +25,9 @@ export interface DeepResearchEvent {
     // write_done
     draft_length?: number
     preview?: string
+    // compile_section_done
+    compiled_count?: number
+    total_sections?: number
     // summarize_done
     summary?: string
     // report

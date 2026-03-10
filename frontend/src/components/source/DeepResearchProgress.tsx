@@ -50,6 +50,9 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
     const sections: SectionProgress[] = []
     let outlineReasoning = ''
     let isCompiling = false
+    let compilingSection = ''
+    let compiledCount = 0
+    let compileTotalSections = 0
 
     for (const event of events) {
         switch (event.type) {
@@ -92,6 +95,12 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 break
             case 'compiling':
                 isCompiling = true
+                break
+            case 'compile_section_done':
+                isCompiling = true
+                compilingSection = event.section || ''
+                compiledCount = event.compiled_count || 0
+                compileTotalSections = event.total_sections || 0
                 break
         }
     }
@@ -215,7 +224,10 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
             {!report && (isCompiling || (sections.length > 0 && sections.every(s => s.summarized) && isRunning)) && (
                 <div className="flex items-center gap-1.5 text-xs text-primary">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    📋 正在汇编最终报告...
+                    {compiledCount > 0 && compileTotalSections > 0
+                        ? `📋 正在汇编: ${compilingSection} (${compiledCount}/${compileTotalSections})`
+                        : '📋 正在汇编最终报告...'
+                    }
                 </div>
             )}
         </div>
