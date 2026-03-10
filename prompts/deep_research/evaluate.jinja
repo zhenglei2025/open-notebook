@@ -10,6 +10,15 @@ Goal: {{section_description}}
 # COLLECTED MATERIALS ({{result_count}} items, search attempt {{search_count}}/5)
 
 {{results_summary}}
+{% if previous_reason %}
+
+# PREVIOUS EVALUATION
+
+The previous round determined the materials were insufficient for the following reason:
+{{previous_reason}}
+
+Please pay special attention to whether the newly added materials address these gaps.
+{% endif %}
 
 # YOUR JOB
 
