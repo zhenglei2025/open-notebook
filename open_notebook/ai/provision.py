@@ -65,4 +65,23 @@ async def provision_langchain_model(
             f"Please check that the model configured for '{default_type}' is a language model, not an embedding or speech model."
         )
 
-    return model.to_langchain()
+    langchain_model = model.to_langchain()
+
+    # Disable thinking mode for GLM4 models to prevent unwanted reasoning tokens
+    model_name = getattr(model, 'model_name', '') or getattr(model, 'name', '') or ''
+    if 'glm' in model_name.lower() and '4' in model_name:
+        logger.debug(f"Detected GLM4 model '{model_name}', disabling thinking mode")
+        if hasattr(langchain_model, 'model_kwargs'):
+            langchain_model.model_kwargs = {
+                **(langchain_model.model_kwargs or {}),
+                "extra_body": {
+                    "chat_template_kwargs": {"enable_thinking": False}
+                }
+            }
+        elif hasattr(langchain_model, 'extra_body'):
+            langchain_model.extra_body = {
+                **(langchain_model.extra_body or {}),
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+
+    return langchain_model
