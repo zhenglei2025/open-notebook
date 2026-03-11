@@ -19,8 +19,8 @@ export default function DashboardLayout({
   const router = useRouter()
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
 
-  // Check for version updates once per session
-  useVersionCheck()
+  // Check for version updates once per session (disabled)
+  // useVersionCheck()
 
   useEffect(() => {
     // Mark that we've completed the initial auth check
