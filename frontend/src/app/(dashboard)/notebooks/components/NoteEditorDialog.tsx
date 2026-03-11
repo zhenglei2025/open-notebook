@@ -13,6 +13,8 @@ import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { cn } from "@/lib/utils";
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { exportToPdf, exportToWord } from '@/lib/utils/export-note'
+import { FileDown, FileText } from 'lucide-react'
 
 const createNoteSchema = z.object({
   title: z.string().optional(),
@@ -56,6 +58,7 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
     },
   })
   const watchTitle = useWatch({ control, name: 'title' })
+  const watchContent = useWatch({ control, name: 'content' })
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
 
   useEffect(() => {
@@ -120,8 +123,8 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={cn(
-          "sm:max-w-3xl w-full max-h-[90vh] overflow-hidden p-0",
-          isEditorFullscreen && "!max-w-screen !max-h-screen border-none w-screen h-screen"
+        "sm:max-w-3xl w-full max-h-[90vh] overflow-hidden p-0",
+        isEditorFullscreen && "!max-w-screen !max-h-screen border-none w-screen h-screen"
       )}>
         <DialogTitle className="sr-only">
           {isEditing ? t.sources.editNote : t.sources.createNote}
@@ -147,8 +150,8 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
               </div>
 
               <div className={cn(
-                  "flex-1 overflow-y-auto",
-                  !isEditorFullscreen && "px-6 py-4")
+                "flex-1 overflow-y-auto",
+                !isEditorFullscreen && "px-6 py-4")
               }>
                 <Controller
                   control={control}
@@ -162,8 +165,8 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                       height={420}
                       placeholder={t.sources.writeNotePlaceholder}
                       className={cn(
-                          "w-full h-full min-h-[420px] max-h-[500px] overflow-hidden [&_.w-md-editor]:!static [&_.w-md-editor]:!w-full [&_.w-md-editor]:!h-full [&_.w-md-editor-content]:overflow-y-auto",
-                          !isEditorFullscreen && "rounded-md border"
+                        "w-full h-full min-h-[420px] max-h-[500px] overflow-hidden [&_.w-md-editor]:!static [&_.w-md-editor]:!w-full [&_.w-md-editor]:!h-full [&_.w-md-editor-content]:overflow-y-auto",
+                        !isEditorFullscreen && "rounded-md border"
                       )}
                     />
                   )}
@@ -175,7 +178,32 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
             </>
           )}
 
-          <div className="border-t px-6 py-4 flex justify-end gap-2">
+          <div className="border-t px-6 py-4 flex items-center gap-2">
+            {isEditing && watchContent && (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => exportToPdf(watchContent, watchTitle || undefined)}
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1" />
+                  PDF
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => exportToWord(watchContent, watchTitle || undefined)}
+                >
+                  <FileDown className="h-3.5 w-3.5 mr-1" />
+                  Word
+                </Button>
+              </div>
+            )}
+            <div className="flex-1" />
             <Button type="button" variant="outline" onClick={handleClose}>
               {t.common.cancel}
             </Button>
