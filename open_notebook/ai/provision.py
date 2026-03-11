@@ -74,6 +74,7 @@ async def provision_langchain_model(
         extra_body = {
             "thinking": {"type": "disabled"},
             "enable_thinking": False,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if hasattr(langchain_model, 'model_kwargs'):
             existing = langchain_model.model_kwargs or {}
