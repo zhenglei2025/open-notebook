@@ -28,9 +28,91 @@ class ThreadState(TypedDict):
     model_override: Optional[str]
 
 
+def _run_async_in_thread(coro):
+    """Helper to run an async coroutine from sync context, handling nested loops."""
+    def _in_new_loop():
+        new_loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(new_loop)
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+            asyncio.set_event_loop(None)
+
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_in_new_loop)
+            return future.result()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+def _augment_context_with_chunks(state: ThreadState) -> ThreadState:
+    """Augment context with relevant chunks found via vector search on user's query."""
+    from open_notebook.domain.notebook import vector_search
+
+    messages = state.get("messages", [])
+    user_query = ""
+    for msg in reversed(messages):
+        if hasattr(msg, "type") and msg.type == "human":
+            user_query = msg.content
+            break
+
+    if not user_query:
+        return state
+
+    try:
+        search_results = _run_async_in_thread(
+            vector_search(user_query, 5, True, False)
+        )
+    except Exception as e:
+        logger.warning(f"Vector search augmentation failed, skipping: {e}")
+        return state
+
+    if not search_results:
+        return state
+
+    # Build chunk text from search results
+    chunk_parts = []
+    for i, result in enumerate(search_results, 1):
+        title = result.get("title", "Unknown")
+        content = ""
+        for match in result.get("matches", []):
+            content += match + "\n"
+        if not content:
+            content = result.get("content", "")
+        if content.strip():
+            chunk_parts.append(f"[Chunk {i}] {title}:\n{content}")
+
+    if not chunk_parts:
+        return state
+
+    logger.info(
+        f"RAG augmentation: found {len(chunk_parts)} relevant chunks "
+        f"for query: {user_query[:80]}..."
+    )
+
+    # Append chunks to existing context
+    augmented_state = dict(state)
+    context = augmented_state.get("context") or {}
+    if isinstance(context, dict):
+        context = dict(context)
+        context["relevant_chunks"] = "\n\n".join(chunk_parts)
+    else:
+        context = str(context) + "\n\n# RELEVANT CHUNKS\n\n" + "\n\n".join(chunk_parts)
+    augmented_state["context"] = context
+
+    return augmented_state
+
+
 def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
     try:
-        system_prompt = Prompter(prompt_template="chat/system").render(data=state)  # type: ignore[arg-type]
+        # Augment context with relevant chunks via vector search
+        augmented_state = _augment_context_with_chunks(state)
+
+        system_prompt = Prompter(prompt_template="chat/system").render(data=augmented_state)  # type: ignore[arg-type]
         payload = [SystemMessage(content=system_prompt)] + state.get("messages", [])
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"

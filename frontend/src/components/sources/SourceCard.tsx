@@ -161,7 +161,7 @@ export function SourceCard({
     const isNowDone = currentStatusFromData === 'completed' || currentStatusFromData === 'failed'
     const needsRefresh = isNowDone && (
       wasProcessing || // Normal case: was polling and status changed
-      (!!sourceWithStatus.command_id && source.title === 'Processing...') // Fast completion: source still shows stale title
+      (!!sourceWithStatus.command_id) // Fast completion: source has a command but status already shows done
     )
 
     if (needsRefresh) {

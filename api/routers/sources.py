@@ -332,9 +332,19 @@ async def create_source(
             # ASYNC PATH: Create source record first, then queue command
             logger.info("Using async processing path")
 
+            # Derive initial title: user-provided > filename > URL > fallback
+            initial_title = source_data.title
+            if not initial_title:
+                if source_data.type == "upload" and upload_file and upload_file.filename:
+                    initial_title = Path(upload_file.filename).stem
+                elif source_data.type == "link" and source_data.url:
+                    initial_title = source_data.url
+                else:
+                    initial_title = "Processing..."
+
             # Create minimal source record - let SurrealDB generate the ID
             source = Source(
-                title=source_data.title or "Processing...",
+                title=initial_title,
                 topics=[],
             )
             await source.save()
@@ -412,9 +422,19 @@ async def create_source(
                 # Import command modules to ensure they're registered
                 import commands.source_commands  # noqa: F401
 
+                # Derive initial title: user-provided > filename > URL > fallback
+                initial_title = source_data.title
+                if not initial_title:
+                    if source_data.type == "upload" and upload_file and upload_file.filename:
+                        initial_title = Path(upload_file.filename).stem
+                    elif source_data.type == "link" and source_data.url:
+                        initial_title = source_data.url
+                    else:
+                        initial_title = "Processing..."
+
                 # Create source record - let SurrealDB generate the ID
                 source = Source(
-                    title=source_data.title or "Processing...",
+                    title=initial_title,
                     topics=[],
                 )
                 await source.save()

@@ -1,19 +1,15 @@
-import operator
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from content_core import extract_content
 from content_core.common import ProcessSourceState
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
 from loguru import logger
-from typing_extensions import Annotated, TypedDict
+from typing_extensions import TypedDict
 
 from open_notebook.ai.models import Model, ModelManager
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
-from open_notebook.graphs.transformation import graph as transform_graph
 
 
 class SourceState(TypedDict):
@@ -22,13 +18,7 @@ class SourceState(TypedDict):
     source_id: str
     notebook_ids: List[str]
     source: Source
-    transformation: Annotated[list, operator.add]
     embed: bool
-
-
-class TransformationState(TypedDict):
-    source: Source
-    transformation: Transformation
 
 
 async def content_process(state: SourceState) -> dict:
@@ -124,64 +114,51 @@ async def save_source(state: SourceState) -> dict:
                 f"Source {source.id} has no text content to embed, skipping vectorization"
             )
 
+    # Submit transformations as background jobs (fire-and-forget)
+    # so the main command completes after vectorization and the UI
+    # stops showing "processing" while insights generate in background
+    if state.get("apply_transformations"):
+        from surreal_commands import submit_command
+        from open_notebook.database.repository import get_current_user_db
+
+        user_db_name = get_current_user_db()
+        for t in state["apply_transformations"]:
+            try:
+                cmd_id = submit_command(
+                    "open_notebook",
+                    "run_transformation",
+                    {
+                        "source_id": str(source.id),
+                        "transformation_id": str(t.id),
+                        "user_db_name": user_db_name,
+                    },
+                )
+                logger.info(
+                    f"Submitted background transformation '{t.name}' "
+                    f"for source {source.id}: command_id={cmd_id}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to submit transformation '{t.name}' "
+                    f"for source {source.id}: {e}"
+                )
+
     return {"source": source}
 
 
-def trigger_transformations(state: SourceState, config: RunnableConfig) -> List[Send]:
-    if len(state["apply_transformations"]) == 0:
-        return []
-
-    to_apply = state["apply_transformations"]
-    logger.debug(f"Applying transformations {to_apply}")
-
-    return [
-        Send(
-            "transform_content",
-            {
-                "source": state["source"],
-                "transformation": t,
-            },
-        )
-        for t in to_apply
-    ]
-
-
-async def transform_content(state: TransformationState) -> Optional[dict]:
-    source = state["source"]
-    content = source.full_text
-    if not content:
-        return None
-    transformation: Transformation = state["transformation"]
-
-    logger.debug(f"Applying transformation {transformation.name}")
-    result = await transform_graph.ainvoke(
-        dict(input_text=content, transformation=transformation)  # type: ignore[arg-type]
-    )
-    await source.add_insight(transformation.title, result["output"])
-    return {
-        "transformation": [
-            {
-                "output": result["output"],
-                "transformation_name": transformation.name,
-            }
-        ]
-    }
-
-
 # Create and compile the workflow
+# Transformations are now submitted as background jobs in save_source,
+# so the graph is: content_process → save_source → END
 workflow = StateGraph(SourceState)
 
 # Add nodes
 workflow.add_node("content_process", content_process)
 workflow.add_node("save_source", save_source)
-workflow.add_node("transform_content", transform_content)
 # Define the graph edges
 workflow.add_edge(START, "content_process")
 workflow.add_edge("content_process", "save_source")
-workflow.add_conditional_edges(
-    "save_source", trigger_transformations, ["transform_content"]
-)
-workflow.add_edge("transform_content", END)
+workflow.add_edge("save_source", END)
 
 # Compile the graph
 source_graph = workflow.compile()
+

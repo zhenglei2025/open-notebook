@@ -87,8 +87,8 @@ export default function NotebookPage() {
         notes.forEach(note => {
           // Only set default if not already set
           if (!(note.id in newNoteSelections)) {
-            // Notes default to 'full'
-            newNoteSelections[note.id] = 'full'
+            // Notes default to 'off' to prevent context overload
+            newNoteSelections[note.id] = 'off'
           }
         })
         return { ...prev, notes: newNoteSelections }

@@ -58,7 +58,7 @@ export function useNotebookSources(notebookId: string) {
       if (!pages) return false
       const hasProcessing = pages.some(page =>
         page.sources.some((s: SourceListResponse & { command_id?: string }) =>
-          s.title === 'Processing...' || (!s.title && s.command_id)
+          !!s.command_id || s.title === 'Processing...'
         )
       )
       return hasProcessing ? 3000 : false

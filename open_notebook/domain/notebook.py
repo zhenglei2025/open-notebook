@@ -362,8 +362,8 @@ class Source(ObjectModel):
         self, context_size: Literal["short", "long"] = "short"
     ) -> Dict[str, Any]:
         insights_list = await self.get_insights()
-        insights = [insight.model_dump() for insight in insights_list]
         if context_size == "long":
+            insights = [insight.model_dump() for insight in insights_list]
             return dict(
                 id=self.id,
                 title=self.title,
@@ -371,6 +371,13 @@ class Source(ObjectModel):
                 full_text=self.full_text,
             )
         else:
+            # Truncate insight content to first 200 chars to reduce context size
+            insights = []
+            for insight in insights_list:
+                data = insight.model_dump()
+                if data.get("content") and len(data["content"]) > 200:
+                    data["content"] = data["content"][:200]
+                insights.append(data)
             return dict(id=self.id, title=self.title, insights=insights)
 
     async def get_embedded_chunks(self) -> int:
