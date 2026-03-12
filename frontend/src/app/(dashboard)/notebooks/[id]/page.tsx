@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FileText, StickyNote, MessageSquare } from 'lucide-react'
 
-export type ContextMode = 'off' | 'insights' | 'full'
+export type ContextMode = 'off' | 'rag' | 'insights' | 'full'
 
 export interface ContextSelections {
   sources: Record<string, ContextMode>
@@ -68,11 +68,8 @@ export default function NotebookPage() {
           const hasInsights = source.insights_count > 0
 
           if (currentMode === undefined) {
-            // Initial setup - default based on insights availability
-            newSourceSelections[source.id] = hasInsights ? 'insights' : 'full'
-          } else if (currentMode === 'full' && hasInsights) {
-            // Source gained insights while in 'full' mode - auto-switch to 'insights'
-            newSourceSelections[source.id] = 'insights'
+            // Default to 'rag' (RAG vector search mode) to reduce context size
+            newSourceSelections[source.id] = 'rag'
           }
         })
         return { ...prev, sources: newSourceSelections }
@@ -87,8 +84,8 @@ export default function NotebookPage() {
         notes.forEach(note => {
           // Only set default if not already set
           if (!(note.id in newNoteSelections)) {
-            // Notes default to 'full'
-            newNoteSelections[note.id] = 'full'
+            // Notes default to 'off' to prevent context overload
+            newNoteSelections[note.id] = 'off'
           }
         })
         return { ...prev, notes: newNoteSelections }

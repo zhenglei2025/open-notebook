@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Search, CheckCircle2, Brain, PenTool, FileText, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
 import { MessageActions } from '@/components/source/MessageActions'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -27,6 +29,7 @@ interface SectionProgress {
     totalResults: number
     relevantCount?: number
     sufficient?: boolean
+    expandedSources?: number
     written: boolean
     summarized: boolean
 }
@@ -88,6 +91,11 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                     sections[event.section_index].written = true
                 }
                 break
+            case 'context_expanded':
+                if (event.section_index !== undefined && sections[event.section_index]) {
+                    sections[event.section_index].expandedSources = event.expanded_sources || 0
+                }
+                break
             case 'summarize_done':
                 if (event.section_index !== undefined && sections[event.section_index]) {
                     sections[event.section_index].summarized = true
@@ -121,7 +129,8 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 </div>
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all">
                     <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
                         components={{
                             a: LinkComponent,
                         }}
@@ -201,6 +210,11 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                             {section.relevantCount !== undefined && (
                                 <Badge variant="outline" className="text-[10px] h-4 px-1.5">
                                     {section.relevantCount} 条相关
+                                </Badge>
+                            )}
+                            {section.expandedSources !== undefined && section.expandedSources > 0 && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {section.expandedSources} 篇查看全文
                                 </Badge>
                             )}
                             {section.written && (

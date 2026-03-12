@@ -362,8 +362,8 @@ class Source(ObjectModel):
         self, context_size: Literal["short", "long"] = "short"
     ) -> Dict[str, Any]:
         insights_list = await self.get_insights()
-        insights = [insight.model_dump() for insight in insights_list]
         if context_size == "long":
+            insights = [insight.model_dump() for insight in insights_list]
             return dict(
                 id=self.id,
                 title=self.title,
@@ -371,6 +371,13 @@ class Source(ObjectModel):
                 full_text=self.full_text,
             )
         else:
+            # Truncate insight content to first 200 chars to reduce context size
+            insights = []
+            for insight in insights_list:
+                data = insight.model_dump()
+                if data.get("content") and len(data["content"]) > 200:
+                    data["content"] = data["content"][:200]
+                insights.append(data)
             return dict(id=self.id, title=self.title, insights=insights)
 
     async def get_embedded_chunks(self) -> int:
@@ -662,6 +669,12 @@ async def vector_search(
 
         # Use unified embedding function (handles chunking if query is very long)
         embed = await generate_embedding(keyword)
+        logger.info(f"[RAG] vector_search: embed dim={len(embed)}, searching sources={source}, notes={note}")
+
+        # Log database context inside async context (may be different thread)
+        from open_notebook.database.repository import get_current_user_db, _worker_user_db
+        logger.info(f"[RAG] vector_search (inside async): get_current_user_db()={get_current_user_db()}, _worker_user_db={_worker_user_db}")
+
         search_results = await repo_query(
             """
             SELECT * FROM fn::vector_search($embed, $results, $source, $note, $minimum_score);
@@ -674,6 +687,7 @@ async def vector_search(
                 "minimum_score": minimum_score,
             },
         )
+        logger.info(f"[RAG] vector_search: raw result count={len(search_results) if search_results else 0}, type={type(search_results)}, repr={repr(search_results)[:500]}")
         return search_results
     except Exception as e:
         logger.error(f"Error performing vector search: {str(e)}")

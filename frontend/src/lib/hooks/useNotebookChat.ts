@@ -170,6 +170,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       } else if (mode === 'full') {
         context_config.sources[source.id] = 'full content'
       } else {
+        // Both 'rag' and 'off' modes don't include direct context
+        // RAG vector search runs automatically regardless
         context_config.sources[source.id] = 'not in'
       }
     })

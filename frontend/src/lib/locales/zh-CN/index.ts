@@ -123,7 +123,8 @@ export const zhCN = {
     completed: "已完成",
     saveSuccess: "保存成功",
     contextModes: {
-      off: "未包含在聊天中",
+      off: "不参与问答",
+      rag: "向量搜索（默认）",
       insights: "仅限见解",
       full: "全部内容",
       clickToCycle: "点击循环切换",
@@ -764,6 +765,13 @@ export const zhCN = {
     autoDeletePlaceholder: "选择自动删除选项",
     filesHelp: "文件处理完成后，原始件不再需要。建议开启自动删除以节省存储空间。除非您将其作为主要存储位置（不建议），否则请选择“是”。",
     loadFailed: "加载设置失败",
+    deepResearch: "深度研究",
+    deepResearchDesc: "配置深度研究行为（仅管理员）",
+    maxSearchRounds: "每章节最大搜索轮次",
+    maxSearchRoundsPlaceholder: "选择最大轮次",
+    maxSearchRoundsHelp: "控制每个章节运行多少次搜索-评估循环。轮次越多覆盖面越广但速度越慢。默认：3",
+    enableContextExpansion: "全文上下文扩展",
+    enableContextExpansionHelp: "启用后，智能体将阅读来源全文以加深理解。关闭可节省 token 并加快研究速度。",
   },
   advanced: {
     title: "高级工具",

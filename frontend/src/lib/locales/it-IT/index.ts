@@ -123,7 +123,8 @@ export const itIT = {
     completed: "completato",
     saveSuccess: "Salvato con successo",
     contextModes: {
-      off: "Non incluso nella chat",
+      off: "Escluso dal contesto",
+      rag: "Ricerca vettoriale (predefinito)",
       insights: "Solo approfondimenti",
       full: "Contenuto completo",
       clickToCycle: "Clicca per cambiare",
@@ -743,6 +744,13 @@ export const itIT = {
     autoDeletePlaceholder: "Seleziona opzione eliminazione automatica",
     filesHelp: "Una volta caricati ed elaborati, i tuoi file non sono più necessari. La maggior parte degli utenti dovrebbe permettere a Open Notebook di eliminare automaticamente i file caricati dalla cartella upload.",
     loadFailed: "Impossibile caricare le impostazioni",
+    deepResearch: "Ricerca approfondita",
+    deepResearchDesc: "Configura il comportamento della ricerca approfondita (solo admin)",
+    maxSearchRounds: "Cicli di ricerca massimi per sezione",
+    maxSearchRoundsPlaceholder: "Seleziona il numero massimo",
+    maxSearchRoundsHelp: "Controlla quanti cicli di ricerca-valutazione vengono eseguiti per sezione. Più cicli = migliore copertura ma più lento. Predefinito: 3",
+    enableContextExpansion: "Espansione del contesto a testo integrale",
+    enableContextExpansionHelp: "Se abilitato, l'agente legge i testi sorgente completi per una comprensione più profonda. La disabilitazione risparmia token e velocizza la ricerca.",
   },
   advanced: {
     title: "Strumenti avanzati",

@@ -123,7 +123,8 @@ export const ptBR = {
     completed: "concluído",
     saveSuccess: "Salvo com sucesso",
     contextModes: {
-      off: "Não incluído no chat",
+      off: "Excluído do contexto",
+      rag: "Busca vetorial (padrão)",
       insights: "Apenas insights",
       full: "Conteúdo completo",
       clickToCycle: "Clique para alternar",
@@ -743,6 +744,13 @@ export const ptBR = {
     autoDeletePlaceholder: "Selecione a opção de exclusão automática",
     filesHelp: "Uma vez que seus arquivos são enviados e processados, eles não são mais necessários. A maioria dos usuários deve permitir que o Open Notebook exclua arquivos enviados da pasta de upload automaticamente.",
     loadFailed: "Falha ao carregar configurações",
+    deepResearch: "Pesquisa profunda",
+    deepResearchDesc: "Configure o comportamento da pesquisa profunda (somente admin)",
+    maxSearchRounds: "Máximo de ciclos de busca por seção",
+    maxSearchRoundsPlaceholder: "Selecione o máximo",
+    maxSearchRoundsHelp: "Controla quantos ciclos de busca-avaliação são executados por seção. Mais ciclos = melhor cobertura, porém mais lento. Padrão: 3",
+    enableContextExpansion: "Expansão de contexto em texto completo",
+    enableContextExpansionHelp: "Quando ativado, o agente lê os textos-fonte completos para uma compreensão mais profunda. Desativar economiza tokens e acelera a pesquisa.",
   },
   advanced: {
     title: "Ferramentas Avançadas",

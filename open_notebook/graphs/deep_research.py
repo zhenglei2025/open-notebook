@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
-from open_notebook.database.repository import repo_query, ensure_record_id
+from open_notebook.database.repository import repo_query, ensure_record_id, admin_repo_query
 from open_notebook.domain.notebook import vector_search
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.utils import clean_thinking_content
@@ -98,6 +98,20 @@ class DeepResearchState(TypedDict):
 # ──────────────────────────────────────────────────────────────────────
 # Helper functions
 # ──────────────────────────────────────────────────────────────────────
+
+
+async def _get_deep_research_settings() -> dict:
+    """Read deep research settings from admin DB (shared across all users)."""
+    try:
+        result = await admin_repo_query(
+            "SELECT deep_research_max_search_rounds, deep_research_enable_context_expansion "
+            "FROM open_notebook:content_settings"
+        )
+        if result and result[0]:
+            return result[0]
+    except Exception as e:
+        logger.warning(f"Failed to read deep research settings from admin DB: {e}")
+    return {}
 
 
 def _get_model_id(config: RunnableConfig) -> Optional[str]:
@@ -555,7 +569,9 @@ async def _process_single_section(
 
     # ── Search + Evaluate loop ──
     is_quick = state.get("research_type") == "quick"
-    max_rounds = 1 if is_quick else MAX_SEARCH_ROUNDS
+    dr_settings = await _get_deep_research_settings()
+    configured_max = dr_settings.get("deep_research_max_search_rounds") or MAX_SEARCH_ROUNDS
+    max_rounds = 1 if is_quick else configured_max
     all_results: List[Dict[str, Any]] = []
     existing_ids: set = set()
     queries = list(section["search_queries"])
@@ -668,7 +684,8 @@ async def _process_single_section(
         })
 
     # ── Context Expansion (after evaluate, before write) ──
-    if not is_quick and all_results:
+    enable_expansion = dr_settings.get("deep_research_enable_context_expansion", True)
+    if not is_quick and all_results and enable_expansion:
         try:
             expanded = await _expand_context(section, all_results, config)
             if expanded:

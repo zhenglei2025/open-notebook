@@ -70,7 +70,7 @@ const getNavigation = (t: TranslationKeys, isAdmin: boolean) => [
     items: [
       ...(isAdmin ? [{ name: t.navigation.models, href: '/settings/api-keys', icon: Bot }] : []),
       { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
-      { name: t.navigation.settings, href: '/settings', icon: Settings },
+      ...(isAdmin ? [{ name: t.navigation.settings, href: '/settings', icon: Settings }] : []),
       { name: t.navigation.advanced, href: '/advanced', icon: Wrench },
       ...(isAdmin ? [{ name: t.navigation.users, href: '/users', icon: Users }] : []),
     ],

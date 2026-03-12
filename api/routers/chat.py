@@ -362,6 +362,20 @@ async def execute_chat(request: ExecuteChatRequest):
         state_values["context"] = request.context
         state_values["model_override"] = model_override
 
+        # Resolve notebook from session relationship for notebook-scoped RAG search
+        try:
+            notebook_query = await repo_query(
+                "SELECT out FROM refers_to WHERE in = $session_id",
+                {"session_id": ensure_record_id(full_session_id)},
+            )
+            if notebook_query:
+                notebook_id = notebook_query[0]["out"]
+                nb = await Notebook.get(notebook_id)
+                state_values["notebook"] = nb
+                logger.debug(f"Chat execute: resolved notebook {nb.id if nb else 'None'} for session {full_session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to resolve notebook for session {full_session_id}: {e}")
+
         # Add user message to state
         from langchain_core.messages import HumanMessage
 

@@ -58,6 +58,8 @@ export interface SettingsResponse {
   default_embedding_option?: string
   auto_delete_files?: string
   youtube_preferred_languages?: string[]
+  deep_research_max_search_rounds?: number
+  deep_research_enable_context_expansion?: boolean
 }
 
 export interface CreateNotebookRequest {

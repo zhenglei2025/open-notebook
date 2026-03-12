@@ -2,6 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { forwardRef } from 'react'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 
 const MDEditor = dynamic(
   () => import('@uiw/react-md-editor').then((mod) => mod.default),
@@ -34,6 +36,10 @@ export const MarkdownEditor = forwardRef<HTMLDivElement, MarkdownEditorProps>(
             placeholder: placeholder || 'Enter markdown...',
             id: textareaId,
             name: name,
+          }}
+          previewOptions={{
+            remarkPlugins: [remarkMath],
+            rehypePlugins: [rehypeKatex],
           }}
           data-color-mode="light"
         />

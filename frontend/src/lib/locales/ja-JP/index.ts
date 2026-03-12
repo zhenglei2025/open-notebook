@@ -123,7 +123,8 @@ export const jaJP = {
     completed: "完了",
     saveSuccess: "保存しました",
     contextModes: {
-      off: "チャットに含めない",
+      off: "コンテキスト対象外",
+      rag: "ベクトル検索（デフォルト）",
       insights: "インサイトのみ",
       full: "全文",
       clickToCycle: "クリックで切り替え",
@@ -743,6 +744,13 @@ export const jaJP = {
     autoDeletePlaceholder: "自動削除オプションを選択",
     filesHelp: "ファイルがアップロードされて処理されると、ファイル自体は不要になります。ほとんどのユーザーはOpen Notebookがアップロードフォルダから自動的にファイルを削除することを許可すべきです。",
     loadFailed: "設定の読み込みに失敗しました",
+    deepResearch: "ディープリサーチ",
+    deepResearchDesc: "ディープリサーチの動作を設定（管理者のみ）",
+    maxSearchRounds: "セクションごとの最大検索ラウンド数",
+    maxSearchRoundsPlaceholder: "最大ラウンド数を選択",
+    maxSearchRoundsHelp: "各セクションで実行される検索・評価サイクルの回数を制御します。回数が多いほどカバー範囲が広がりますが、速度は低下します。デフォルト：3",
+    enableContextExpansion: "全文コンテキスト拡張",
+    enableContextExpansionHelp: "有効にすると、エージェントがソースの全文を読み、より深い理解を得ます。無効にするとトークンを節約し、リサーチを高速化します。",
   },
   advanced: {
     title: "詳細ツール",
