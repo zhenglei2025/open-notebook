@@ -151,5 +151,92 @@ class TestTransformationGraph:
         assert hasattr(transformation_graph, "ainvoke")
 
 
+# ============================================================================
+# TEST SUITE 4: Deep Research Context Expansion
+# ============================================================================
+
+
+class TestDeepResearchContextExpansion:
+    """Test suite for the Context Expansion feature in Deep Research."""
+
+    def test_context_expansion_result_model(self):
+        """Test ContextExpansionResult Pydantic model."""
+        from open_notebook.graphs.deep_research import ContextExpansionResult
+
+        # Empty needs
+        result = ContextExpansionResult(needs_full_context=[], reason="All chunks sufficient")
+        assert result.needs_full_context == []
+        assert result.reason == "All chunks sufficient"
+
+        # With source IDs
+        result = ContextExpansionResult(
+            needs_full_context=["source:abc123", "source:def456"],
+            reason="Fragments of a larger process need full context",
+        )
+        assert len(result.needs_full_context) == 2
+        assert "source:abc123" in result.needs_full_context
+
+    def test_context_expansion_result_default_factory(self):
+        """Test ContextExpansionResult uses default_factory for needs_full_context."""
+        from open_notebook.graphs.deep_research import ContextExpansionResult
+
+        result = ContextExpansionResult(reason="No expansion needed")
+        assert result.needs_full_context == []
+
+    def test_max_full_text_length_constant(self):
+        """Test MAX_FULL_TEXT_LENGTH is set to 15000."""
+        from open_notebook.graphs.deep_research import MAX_FULL_TEXT_LENGTH
+
+        assert MAX_FULL_TEXT_LENGTH == 15_000
+
+    def test_deep_research_graph_compilation(self):
+        """Test that the deep research graph compiles correctly after changes."""
+        from open_notebook.graphs.deep_research import graph
+
+        assert graph is not None
+        assert hasattr(graph, "invoke")
+        assert hasattr(graph, "ainvoke")
+
+    def test_deep_research_state_structure(self):
+        """Test DeepResearchState has all required fields."""
+        from open_notebook.graphs.deep_research import DeepResearchState
+
+        state = DeepResearchState(
+            question="Test question",
+            notebook_id=None,
+            job_id=None,
+            research_type="deep",
+            outline=None,
+            current_section_index=0,
+            section_search_count=0,
+            section_search_results=[],
+            current_queries=[],
+            is_material_sufficient=False,
+            section_drafts=[],
+            section_summaries=[],
+            final_report="",
+            status="",
+            events=[],
+        )
+        assert state["question"] == "Test question"
+        assert state["research_type"] == "deep"
+
+    def test_context_expansion_result_json_serialization(self):
+        """Test ContextExpansionResult can serialize to JSON for structured output."""
+        from open_notebook.graphs.deep_research import ContextExpansionResult
+
+        result = ContextExpansionResult(
+            needs_full_context=["source:abc"],
+            reason="Need full process flow",
+        )
+        json_data = result.model_dump()
+        assert json_data["needs_full_context"] == ["source:abc"]
+        assert json_data["reason"] == "Need full process flow"
+
+        # Verify it can be parsed back
+        parsed = ContextExpansionResult(**json_data)
+        assert parsed == result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
