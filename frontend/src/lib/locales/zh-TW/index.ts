@@ -743,6 +743,13 @@ export const zhTW = {
     autoDeletePlaceholder: "選擇自動刪除選項",
     filesHelp: "檔案處理完成後，原始件不再需要。建議開啟自動刪除以節省儲存空間。除非您將其作為主要儲存位置（不建議），否則請選擇“是”。",
     loadFailed: "載入設定失敗",
+    deepResearch: "深度研究",
+    deepResearchDesc: "配置深度研究行為（僅管理員）",
+    maxSearchRounds: "每章節最大搜尋輪次",
+    maxSearchRoundsPlaceholder: "選擇最大輪次",
+    maxSearchRoundsHelp: "控制每個章節運行多少次搜尋-評估循環。輪次越多覆蓋面越廣但速度越慢。預設：3",
+    enableContextExpansion: "全文上下文擴展",
+    enableContextExpansionHelp: "啟用後，智能體將閱讀來源全文以加深理解。關閉可節省 token 並加快研究速度。",
   },
   advanced: {
     title: "進階工具",

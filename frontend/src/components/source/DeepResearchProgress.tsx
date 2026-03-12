@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Search, CheckCircle2, Brain, PenTool, FileText, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
 import { MessageActions } from '@/components/source/MessageActions'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -121,7 +123,8 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 </div>
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all">
                     <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
                         components={{
                             a: LinkComponent,
                         }}

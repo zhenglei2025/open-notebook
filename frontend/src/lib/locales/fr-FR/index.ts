@@ -743,6 +743,13 @@ export const frFR = {
     autoDeletePlaceholder: "Sélectionnez une option de suppression automatique",
     filesHelp: "Une fois vos fichiers téléchargés et traités, ils ne sont plus nécessaires. La plupart des utilisateurs devraient autoriser Open Notebook à supprimer automatiquement les fichiers du dossier de téléchargement.",
     loadFailed: "Échec du chargement des paramètres",
+    deepResearch: "Recherche approfondie",
+    deepResearchDesc: "Configurer le comportement de la recherche approfondie (admin uniquement)",
+    maxSearchRounds: "Nombre max de cycles de recherche par section",
+    maxSearchRoundsPlaceholder: "Sélectionner le nombre max",
+    maxSearchRoundsHelp: "Contrôle le nombre de cycles recherche-évaluation par section. Plus de cycles = meilleure couverture mais plus lent. Par défaut : 3",
+    enableContextExpansion: "Expansion du contexte en texte intégral",
+    enableContextExpansionHelp: "Lorsqu'activé, l'agent lit les textes sources complets pour une compréhension plus approfondie. La désactivation économise des tokens et accélère la recherche.",
   },
   advanced: {
     title: "Outils Avancés",

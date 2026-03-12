@@ -14,12 +14,15 @@ import { useSettings, useUpdateSettings } from '@/lib/hooks/use-settings'
 import { useEffect, useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
   default_content_processing_engine_url: z.enum(['auto', 'firecrawl', 'jina', 'simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
+  deep_research_max_search_rounds: z.number().min(1).max(10).optional(),
+  deep_research_enable_context_expansion: z.enum(['yes', 'no']).optional(),
 })
 
 type SettingsFormData = z.infer<typeof settingsSchema>
@@ -28,15 +31,17 @@ export function SettingsForm() {
   const { t } = useTranslation()
   const { data: settings, isLoading, error } = useSettings()
   const updateSettings = useUpdateSettings()
+  const { isAdmin } = useAuthStore()
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     doc: false,
     url: false,
     embedding: false,
-    files: false
+    files: false,
+    deepResearch: false
   })
   const [hasResetForm, setHasResetForm] = useState(false)
-  
-  
+
+
   const {
     control,
     handleSubmit,
@@ -49,6 +54,8 @@ export function SettingsForm() {
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
       auto_delete_files: undefined,
+      deep_research_max_search_rounds: undefined,
+      deep_research_enable_context_expansion: undefined,
     }
   })
 
@@ -64,6 +71,8 @@ export function SettingsForm() {
         default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
         default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
+        deep_research_max_search_rounds: settings.deep_research_max_search_rounds ?? 3,
+        deep_research_enable_context_expansion: (settings.deep_research_enable_context_expansion !== false ? 'yes' : 'no') as 'yes' | 'no',
       }
       reset(formData)
       setHasResetForm(true)
@@ -71,7 +80,12 @@ export function SettingsForm() {
   }, [hasResetForm, reset, settings])
 
   const onSubmit = async (data: SettingsFormData) => {
-    await updateSettings.mutateAsync(data)
+    // Convert deep research fields for API
+    const apiData: Record<string, unknown> = { ...data }
+    if (data.deep_research_enable_context_expansion !== undefined) {
+      apiData.deep_research_enable_context_expansion = data.deep_research_enable_context_expansion === 'yes'
+    }
+    await updateSettings.mutateAsync(apiData)
   }
 
   if (isLoading) {
@@ -109,22 +123,22 @@ export function SettingsForm() {
               name="default_content_processing_engine_doc"
               control={control}
               render={({ field }) => (
-                  <Select
-                    key={field.value}
-                    name={field.name}
-                    value={field.value || ''}
-                    onValueChange={field.onChange}
-                    disabled={field.disabled || isLoading}
-                  >
-                      <SelectTrigger id="doc_engine" className="w-full">
-                        <SelectValue placeholder={t.settings.docEnginePlaceholder} />
-                      </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">{t.settings.autoRecommended}</SelectItem>
-                      <SelectItem value="docling">{t.settings.docling}</SelectItem>
-                      <SelectItem value="simple">{t.settings.simple}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <Select
+                  key={field.value}
+                  name={field.name}
+                  value={field.value || ''}
+                  onValueChange={field.onChange}
+                  disabled={field.disabled || isLoading}
+                >
+                  <SelectTrigger id="doc_engine" className="w-full">
+                    <SelectValue placeholder={t.settings.docEnginePlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">{t.settings.autoRecommended}</SelectItem>
+                    <SelectItem value="docling">{t.settings.docling}</SelectItem>
+                    <SelectItem value="simple">{t.settings.simple}</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
             <Collapsible open={expandedSections.doc} onOpenChange={() => toggleSection('doc')}>
@@ -137,7 +151,7 @@ export function SettingsForm() {
               </CollapsibleContent>
             </Collapsible>
           </div>
-          
+
           <div className="space-y-3">
             <Label htmlFor="url_engine">{t.settings.urlEngine}</Label>
             <Controller
@@ -163,7 +177,7 @@ export function SettingsForm() {
                 </Select>
               )}
             />
-             <Collapsible open={expandedSections.url} onOpenChange={() => toggleSection('url')}>
+            <Collapsible open={expandedSections.url} onOpenChange={() => toggleSection('url')}>
               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.url ? 'rotate-180' : ''}`} />
                 {t.settings.helpMeChoose}
@@ -176,7 +190,7 @@ export function SettingsForm() {
         </CardContent>
       </Card>
 
-       <Card>
+      <Card>
         <CardHeader>
           <CardTitle>{t.settings.embeddingAndSearch}</CardTitle>
           <CardDescription>
@@ -184,7 +198,7 @@ export function SettingsForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-           <div className="space-y-3">
+          <div className="space-y-3">
             <Label htmlFor="embedding">{t.settings.defaultEmbeddingOption}</Label>
             <Controller
               name="default_embedding_option"
@@ -208,7 +222,7 @@ export function SettingsForm() {
                 </Select>
               )}
             />
-             <Collapsible open={expandedSections.embedding} onOpenChange={() => toggleSection('embedding')}>
+            <Collapsible open={expandedSections.embedding} onOpenChange={() => toggleSection('embedding')}>
               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.embedding ? 'rotate-180' : ''}`} />
                 {t.settings.helpMeChoose}
@@ -221,7 +235,7 @@ export function SettingsForm() {
         </CardContent>
       </Card>
 
-       <Card>
+      <Card>
         <CardHeader>
           <CardTitle>{t.settings.fileManagement}</CardTitle>
           <CardDescription>
@@ -229,7 +243,7 @@ export function SettingsForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-           <div className="space-y-3">
+          <div className="space-y-3">
             <Label htmlFor="auto_delete">{t.settings.autoDeleteFiles}</Label>
             <Controller
               name="auto_delete_files"
@@ -245,14 +259,14 @@ export function SettingsForm() {
                   <SelectTrigger id="auto_delete" className="w-full">
                     <SelectValue placeholder={t.settings.autoDeletePlaceholder} />
                   </SelectTrigger>
-                   <SelectContent>
+                  <SelectContent>
                     <SelectItem value="yes">{t.common.yes}</SelectItem>
                     <SelectItem value="no">{t.common.no}</SelectItem>
                   </SelectContent>
                 </Select>
               )}
             />
-             <Collapsible open={expandedSections.files} onOpenChange={() => toggleSection('files')}>
+            <Collapsible open={expandedSections.files} onOpenChange={() => toggleSection('files')}>
               <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.files ? 'rotate-180' : ''}`} />
                 {t.settings.helpMeChoose}
@@ -265,9 +279,90 @@ export function SettingsForm() {
         </CardContent>
       </Card>
 
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.settings.deepResearch}</CardTitle>
+            <CardDescription>
+              {t.settings.deepResearchDesc}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="max_search_rounds">{t.settings.maxSearchRounds}</Label>
+              <Controller
+                name="deep_research_max_search_rounds"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    key={field.value?.toString()}
+                    name={field.name}
+                    value={field.value?.toString() || '3'}
+                    onValueChange={(v) => field.onChange(parseInt(v, 10))}
+                    disabled={field.disabled || isLoading}
+                  >
+                    <SelectTrigger id="max_search_rounds" className="w-full">
+                      <SelectValue placeholder={t.settings.maxSearchRoundsPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <Collapsible open={expandedSections.deepResearch} onOpenChange={() => toggleSection('deepResearch')}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.deepResearch ? 'rotate-180' : ''}`} />
+                  {t.settings.helpMeChoose}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                  <p>{t.settings.maxSearchRoundsHelp}</p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="context_expansion">{t.settings.enableContextExpansion}</Label>
+              <Controller
+                name="deep_research_enable_context_expansion"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    key={field.value}
+                    name={field.name}
+                    value={field.value || 'yes'}
+                    onValueChange={field.onChange}
+                    disabled={field.disabled || isLoading}
+                  >
+                    <SelectTrigger id="context_expansion" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">{t.common.yes}</SelectItem>
+                      <SelectItem value="no">{t.common.no}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <Collapsible open={expandedSections.contextExpansion} onOpenChange={() => toggleSection('contextExpansion')}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.contextExpansion ? 'rotate-180' : ''}`} />
+                  {t.settings.helpMeChoose}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                  <p>{t.settings.enableContextExpansionHelp}</p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex justify-end">
-         <Button 
-          type="submit" 
+        <Button
+          type="submit"
           disabled={!isDirty || updateSettings.isPending}
         >
           {updateSettings.isPending ? t.common.saving : t.navigation.settings}

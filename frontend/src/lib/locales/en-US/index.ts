@@ -765,6 +765,13 @@ export const enUS = {
     autoDeletePlaceholder: "Select auto delete option",
     filesHelp: "Once your files are uploaded and processed, they are not required anymore. Most users should allow Open Notebook to delete uploaded files from the upload folder automatically.",
     loadFailed: "Failed to load settings",
+    deepResearch: "Deep Research",
+    deepResearchDesc: "Configure deep research behavior (admin only)",
+    maxSearchRounds: "Max Search Rounds Per Section",
+    maxSearchRoundsPlaceholder: "Select max rounds",
+    maxSearchRoundsHelp: "Controls how many search-evaluate cycles run per section. More rounds = better coverage but slower. Default: 3",
+    enableContextExpansion: "Full-Text Context Expansion",
+    enableContextExpansionHelp: "When enabled, the agent reads full source texts for deeper understanding. Disabling saves tokens and speeds up research.",
   },
   advanced: {
     title: "AdvancedTools",

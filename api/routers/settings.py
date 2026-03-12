@@ -20,6 +20,8 @@ async def get_settings():
             default_embedding_option=settings.default_embedding_option,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
+            deep_research_max_search_rounds=settings.deep_research_max_search_rounds,
+            deep_research_enable_context_expansion=settings.deep_research_enable_context_expansion,
         )
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
@@ -67,6 +69,14 @@ async def update_settings(settings_update: SettingsUpdate):
             settings.youtube_preferred_languages = (
                 settings_update.youtube_preferred_languages
             )
+        if settings_update.deep_research_max_search_rounds is not None:
+            settings.deep_research_max_search_rounds = (
+                settings_update.deep_research_max_search_rounds
+            )
+        if settings_update.deep_research_enable_context_expansion is not None:
+            settings.deep_research_enable_context_expansion = (
+                settings_update.deep_research_enable_context_expansion
+            )
 
         await settings.update()
 
@@ -76,6 +86,8 @@ async def update_settings(settings_update: SettingsUpdate):
             default_embedding_option=settings.default_embedding_option,
             auto_delete_files=settings.auto_delete_files,
             youtube_preferred_languages=settings.youtube_preferred_languages,
+            deep_research_max_search_rounds=settings.deep_research_max_search_rounds,
+            deep_research_enable_context_expansion=settings.deep_research_enable_context_expansion,
         )
     except HTTPException:
         raise

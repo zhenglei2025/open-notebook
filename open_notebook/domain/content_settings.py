@@ -23,3 +23,9 @@ class ContentSettings(RecordModel):
         ["en", "pt", "es", "de", "nl", "en-GB", "fr", "de", "hi", "ja"],
         description="Preferred languages for YouTube transcripts",
     )
+    deep_research_max_search_rounds: Optional[int] = Field(
+        3, description="Max search rounds per section in deep research"
+    )
+    deep_research_enable_context_expansion: Optional[bool] = Field(
+        True, description="Whether to enable full-text context expansion in deep research"
+    )

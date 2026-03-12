@@ -262,6 +262,8 @@ class SettingsResponse(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    deep_research_max_search_rounds: Optional[int] = None
+    deep_research_enable_context_expansion: Optional[bool] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -270,6 +272,8 @@ class SettingsUpdate(BaseModel):
     default_embedding_option: Optional[str] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
+    deep_research_max_search_rounds: Optional[int] = None
+    deep_research_enable_context_expansion: Optional[bool] = None
 
 
 # Sources API models

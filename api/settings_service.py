@@ -36,6 +36,12 @@ class SettingsService:
             youtube_preferred_languages=settings_data.get(
                 "youtube_preferred_languages"
             ),
+            deep_research_max_search_rounds=settings_data.get(
+                "deep_research_max_search_rounds"
+            ),
+            deep_research_enable_context_expansion=settings_data.get(
+                "deep_research_enable_context_expansion"
+            ),
         )
 
         return settings
@@ -48,6 +54,8 @@ class SettingsService:
             "default_embedding_option": settings.default_embedding_option,
             "auto_delete_files": settings.auto_delete_files,
             "youtube_preferred_languages": settings.youtube_preferred_languages,
+            "deep_research_max_search_rounds": settings.deep_research_max_search_rounds,
+            "deep_research_enable_context_expansion": settings.deep_research_enable_context_expansion,
         }
 
         settings_response = api_client.update_settings(**updates)
@@ -70,6 +78,12 @@ class SettingsService:
         settings.auto_delete_files = settings_data.get("auto_delete_files")
         settings.youtube_preferred_languages = settings_data.get(
             "youtube_preferred_languages"
+        )
+        settings.deep_research_max_search_rounds = settings_data.get(
+            "deep_research_max_search_rounds"
+        )
+        settings.deep_research_enable_context_expansion = settings_data.get(
+            "deep_research_enable_context_expansion"
         )
 
         return settings
