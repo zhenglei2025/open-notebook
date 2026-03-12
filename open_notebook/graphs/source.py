@@ -7,7 +7,7 @@ from loguru import logger
 from typing_extensions import TypedDict
 
 from open_notebook.ai.models import Model, ModelManager
-from open_notebook.domain.content_settings import ContentSettings
+from open_notebook.database.repository import admin_repo_query
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 
@@ -21,31 +21,30 @@ class SourceState(TypedDict):
     embed: bool
 
 
+async def _get_content_settings() -> dict:
+    """Read content settings from admin DB (shared across all users)."""
+    try:
+        result = await admin_repo_query(
+            "SELECT * FROM ONLY open_notebook:content_settings"
+        )
+        if result:
+            row = result[0] if isinstance(result, list) else result
+            if isinstance(row, dict):
+                return row
+    except Exception as e:
+        logger.warning(f"Failed to read content settings from admin DB: {e}")
+    return {}
+
+
 async def content_process(state: SourceState) -> dict:
-    content_settings = ContentSettings(
-        default_content_processing_engine_doc="auto",
-        default_content_processing_engine_url="auto",
-        default_embedding_option="ask",
-        auto_delete_files="yes",
-        youtube_preferred_languages=[
-            "en",
-            "pt",
-            "es",
-            "de",
-            "nl",
-            "en-GB",
-            "fr",
-            "hi",
-            "ja",
-        ],
-    )
+    settings = await _get_content_settings()
     content_state: Dict[str, Any] = state["content_state"]  # type: ignore[assignment]
 
     content_state["url_engine"] = (
-        content_settings.default_content_processing_engine_url or "auto"
+        settings.get("default_content_processing_engine_url") or "auto"
     )
     content_state["document_engine"] = (
-        content_settings.default_content_processing_engine_doc or "auto"
+        settings.get("default_content_processing_engine_doc") or "auto"
     )
     content_state["output_format"] = "markdown"
 

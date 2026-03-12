@@ -214,14 +214,26 @@ async def _notebook_vector_search(
     )
     logger.info(f"Notebook {notebook_id} has {len(sources_check) if sources_check else 0} linked sources: {sources_check}")
 
+    # Debug: check if embeddings exist for these sources
+    if sources_check:
+        embed_count = await repo_query(
+            "SELECT count() FROM source_embedding WHERE source IN $sources GROUP ALL",
+            {"sources": [ensure_record_id(s) if isinstance(s, str) else s for s in sources_check]},
+        )
+        insight_count = await repo_query(
+            "SELECT count() FROM source_insight WHERE source IN $sources GROUP ALL",
+            {"sources": [ensure_record_id(s) if isinstance(s, str) else s for s in sources_check]},
+        )
+        logger.info(f"Embeddings: {embed_count}, Insights: {insight_count}")
+
     # Step-by-step search with detailed logging
     notebook_sources = sources_check or []
     source_ids = [ensure_record_id(s) if isinstance(s, str) else s for s in notebook_sources]
 
-    logger.info(f"[VectorSearch] Query: '{keyword}', notebook: {notebook_id}, {len(source_ids)} sources")
+    logger.info(f"[VectorSearch] Query: '{keyword}', notebook: {notebook_id}, source_ids: {source_ids}")
 
-    # Search source_embedding only (insights excluded)
-    results = await repo_query(
+    # Step 1: Search source_embedding
+    source_results_raw = await repo_query(
         """
         SELECT
             id,
@@ -242,9 +254,52 @@ async def _notebook_vector_search(
             "min_similarity": min_similarity,
         },
     )
-    logger.info(f"[VectorSearch] source_embedding results: {len(results) if results else 0}")
+    logger.info(f"[VectorSearch] source_embedding results: {len(source_results_raw) if source_results_raw else 0}")
+    if source_results_raw:
+        for r in source_results_raw[:3]:
+            logger.info(f"[VectorSearch]   - sim={r.get('similarity', '?'):.4f}, title={r.get('title', '?')}, content={str(r.get('content', ''))[:80]}...")
 
-    return results or []
+    # Step 2: Search source_insight
+    insight_results_raw = await repo_query(
+        """
+        SELECT
+            id,
+            insight_type + ' - ' + source.title AS title,
+            content,
+            source.id AS parent_id,
+            vector::similarity::cosine(embedding, $embed) AS similarity
+        FROM source_insight
+        WHERE source IN $sources
+            AND vector::similarity::cosine(embedding, $embed) >= $min_similarity
+        ORDER BY similarity DESC
+        LIMIT $match_count
+        """,
+        {
+            "sources": source_ids,
+            "embed": embed,
+            "match_count": match_count,
+            "min_similarity": min_similarity,
+        },
+    )
+    logger.info(f"[VectorSearch] source_insight results: {len(insight_results_raw) if insight_results_raw else 0}")
+    if insight_results_raw:
+        for r in insight_results_raw[:3]:
+            logger.info(f"[VectorSearch]   - sim={r.get('similarity', '?'):.4f}, title={r.get('title', '?')}, content={str(r.get('content', ''))[:80]}...")
+
+    # Combine results
+    all_results = (source_results_raw or []) + (insight_results_raw or [])
+
+    # Deduplicate by id, keep highest similarity
+    seen = {}
+    for r in all_results:
+        rid = str(r.get("id", ""))
+        if rid not in seen or r.get("similarity", 0) > seen[rid].get("similarity", 0):
+            seen[rid] = r
+
+    results = sorted(seen.values(), key=lambda x: x.get("similarity", 0), reverse=True)[:match_count]
+    logger.info(f"[VectorSearch] Final combined results: {len(results)}")
+
+    return results
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -433,31 +488,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
                     title = p.get("title", "Untitled")
                     content = str(p.get("content", ""))[:200]
                     source_previews.append({"title": title, "preview": content})
-
-            # 1b. Get first 200 chars of insights for each source
-            insights_raw = await repo_query(
-                """
-                LET $sources = (SELECT VALUE in FROM reference WHERE out = $notebook_id);
-                SELECT
-                    source.title AS title,
-                    insight_type,
-                    content
-                FROM source_insight
-                WHERE source IN $sources
-                """,
-                {"notebook_id": ensure_record_id(notebook_id)},
-            )
-            if insights_raw:
-                for ins in insights_raw:
-                    title = ins.get("title", "Untitled")
-                    insight_type = ins.get("insight_type", "insight")
-                    content = str(ins.get("content", ""))[:200]
-                    source_previews.append({
-                        "title": f"[{insight_type}] {title}",
-                        "preview": content,
-                    })
-
-            logger.info(f"Deep Research: collected {len(source_previews)} source/insight previews for outline")
+                logger.info(f"Deep Research: collected {len(source_previews)} source previews for outline")
 
             # 2. Preliminary vector search based on the question
             preliminary_results = await _notebook_vector_search(question, notebook_id, match_count=5)

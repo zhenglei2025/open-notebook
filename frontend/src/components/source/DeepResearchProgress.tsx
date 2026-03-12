@@ -29,6 +29,7 @@ interface SectionProgress {
     totalResults: number
     relevantCount?: number
     sufficient?: boolean
+    expandedSources?: number
     written: boolean
     summarized: boolean
 }
@@ -88,6 +89,11 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
             case 'write_done':
                 if (event.section_index !== undefined && sections[event.section_index]) {
                     sections[event.section_index].written = true
+                }
+                break
+            case 'context_expanded':
+                if (event.section_index !== undefined && sections[event.section_index]) {
+                    sections[event.section_index].expandedSources = event.expanded_sources || 0
                 }
                 break
             case 'summarize_done':
@@ -204,6 +210,11 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                             {section.relevantCount !== undefined && (
                                 <Badge variant="outline" className="text-[10px] h-4 px-1.5">
                                     {section.relevantCount} 条相关
+                                </Badge>
+                            )}
+                            {section.expandedSources !== undefined && section.expandedSources > 0 && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {section.expandedSources} 篇查看全文
                                 </Badge>
                             )}
                             {section.written && (
