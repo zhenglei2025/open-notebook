@@ -29,8 +29,20 @@ class ThreadState(TypedDict):
 
 
 def _run_async_in_thread(coro):
-    """Helper to run an async coroutine from sync context, handling nested loops."""
+    """Helper to run an async coroutine from sync context, handling nested loops.
+
+    Automatically captures and propagates the current user's database context
+    to the new thread, since ContextVar doesn't propagate across threads.
+    """
+    # Auto-capture database context in the calling thread BEFORE creating new thread
+    from open_notebook.database.repository import get_current_user_db
+    captured_user_db = get_current_user_db()
+
     def _in_new_loop():
+        # Restore database context in the new thread
+        if captured_user_db:
+            from open_notebook.database.repository import set_current_user_db
+            set_current_user_db(captured_user_db)
         new_loop = asyncio.new_event_loop()
         try:
             asyncio.set_event_loop(new_loop)
@@ -50,9 +62,10 @@ def _run_async_in_thread(coro):
 
 
 def _augment_context_with_chunks(state: ThreadState) -> ThreadState:
-    """Augment context with relevant chunks found via vector search on user's query."""
-    from open_notebook.domain.notebook import vector_search
+    """Augment context with relevant chunks found via vector search on user's query.
 
+    Scoped to the current notebook's sources via the reference table.
+    """
     messages = state.get("messages", [])
     user_query = ""
     for msg in reversed(messages):
@@ -61,28 +74,57 @@ def _augment_context_with_chunks(state: ThreadState) -> ThreadState:
             break
 
     if not user_query:
+        logger.info("[RAG] No user query found, skipping augmentation")
         return state
 
+    # Get notebook ID for scoped search
+    notebook = state.get("notebook")
+    notebook_id = notebook.id if notebook else None
+    logger.info(f"[RAG] Starting vector search for query: {user_query[:100]}, notebook_id={notebook_id}")
+
     try:
-        search_results = _run_async_in_thread(
-            vector_search(user_query, 5, True, False)
-        )
+        if notebook_id:
+            # Notebook-scoped search: only search sources linked to this notebook
+            from open_notebook.graphs.deep_research import _notebook_vector_search
+            search_results = _run_async_in_thread(
+                _notebook_vector_search(user_query, notebook_id, match_count=5)
+            )
+        else:
+            # Fallback: global search if no notebook context
+            from open_notebook.domain.notebook import vector_search
+            search_results = _run_async_in_thread(
+                vector_search(user_query, 5, True, False)
+            )
+        logger.info(f"[RAG] Vector search returned {len(search_results) if search_results else 0} results")
+        if search_results:
+            logger.info(f"[RAG] First result title: {search_results[0].get('title', 'N/A')}, similarity: {search_results[0].get('similarity', 'N/A')}")
+        else:
+            logger.info(f"[RAG] Raw search_results value: {repr(search_results)}")
     except Exception as e:
-        logger.warning(f"Vector search augmentation failed, skipping: {e}")
+        logger.warning(f"[RAG] Vector search augmentation failed: {e}")
         return state
 
     if not search_results:
+        logger.info("[RAG] No search results found, skipping augmentation")
         return state
 
     # Build chunk text from search results
     chunk_parts = []
     for i, result in enumerate(search_results, 1):
         title = result.get("title", "Unknown")
+        # _notebook_vector_search returns 'content' (string/list),
+        # fn::vector_search returns 'matches' (list)
         content = ""
-        for match in result.get("matches", []):
-            content += match + "\n"
+        matches = result.get("matches")
+        if matches and isinstance(matches, list):
+            for match in matches:
+                content += str(match) + "\n"
         if not content:
-            content = result.get("content", "")
+            raw_content = result.get("content", "")
+            if isinstance(raw_content, list):
+                content = "\n".join(str(c) for c in raw_content)
+            else:
+                content = str(raw_content)
         if content.strip():
             chunk_parts.append(f"[Chunk {i}] {title}:\n{content}")
 
@@ -97,12 +139,23 @@ def _augment_context_with_chunks(state: ThreadState) -> ThreadState:
     # Append chunks to existing context
     augmented_state = dict(state)
     context = augmented_state.get("context") or {}
+    chunks_text = "\n\n".join(chunk_parts)
+
     if isinstance(context, dict):
-        context = dict(context)
-        context["relevant_chunks"] = "\n\n".join(chunk_parts)
+        # Build a clean string from the dict context + chunks
+        parts = []
+        # Add existing source/note context if any
+        for source_ctx in context.get("sources", []):
+            if source_ctx:
+                parts.append(str(source_ctx))
+        for note_ctx in context.get("notes", []):
+            if note_ctx:
+                parts.append(str(note_ctx))
+        # Add RAG chunks
+        parts.append(f"# RELEVANT SEARCH RESULTS\n\n{chunks_text}")
+        augmented_state["context"] = "\n\n".join(parts)
     else:
-        context = str(context) + "\n\n# RELEVANT CHUNKS\n\n" + "\n\n".join(chunk_parts)
-    augmented_state["context"] = context
+        augmented_state["context"] = str(context) + "\n\n# RELEVANT SEARCH RESULTS\n\n" + chunks_text
 
     return augmented_state
 

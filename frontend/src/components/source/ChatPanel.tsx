@@ -31,6 +31,7 @@ import { DeepResearchProgress } from './DeepResearchProgress'
 interface NotebookContextStats {
   sourcesInsights: number
   sourcesFull: number
+  sourcesRag?: number
   notesCount: number
   tokenCount?: number
   charCount?: number
@@ -527,6 +528,7 @@ export function ChatPanel({
             <ContextIndicator
               sourcesInsights={notebookContextStats.sourcesInsights}
               sourcesFull={notebookContextStats.sourcesFull}
+              sourcesRag={notebookContextStats.sourcesRag}
               notesCount={notebookContextStats.notesCount}
               tokenCount={notebookContextStats.tokenCount}
               charCount={notebookContextStats.charCount}

@@ -123,7 +123,8 @@ export const enUS = {
     completed: "completed",
     saveSuccess: "Saved successfully",
     contextModes: {
-      off: "Not included in chat",
+      off: "Excluded from context",
+      rag: "RAG Search (default)",
       insights: "Insights only",
       full: "Full content",
       clickToCycle: "Click to cycle",

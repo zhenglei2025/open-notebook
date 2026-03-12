@@ -123,7 +123,8 @@ export const ptBR = {
     completed: "concluído",
     saveSuccess: "Salvo com sucesso",
     contextModes: {
-      off: "Não incluído no chat",
+      off: "Excluído do contexto",
+      rag: "Busca vetorial (padrão)",
       insights: "Apenas insights",
       full: "Conteúdo completo",
       clickToCycle: "Clique para alternar",

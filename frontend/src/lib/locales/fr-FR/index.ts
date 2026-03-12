@@ -123,7 +123,8 @@ export const frFR = {
     completed: "terminé",
     saveSuccess: "Enregistré avec succès",
     contextModes: {
-      off: "Non inclus dans le chat",
+      off: "Exclu du contexte",
+      rag: "Recherche vectorielle (par défaut)",
       insights: "Analyses uniquement",
       full: "Contenu complet",
       clickToCycle: "Cliquez pour faire défiler",

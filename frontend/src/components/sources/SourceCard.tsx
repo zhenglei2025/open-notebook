@@ -144,7 +144,9 @@ export function SourceCard({
   const rawStatus = statusData?.status || sourceWithStatus.status
   const currentStatus: SourceStatus = isSourceStatus(rawStatus)
     ? rawStatus
-    : (sourceWithStatus.command_id ? 'new' : 'completed')
+    : rawStatus === 'unknown'
+      ? 'failed'  // Stale or lost command — treat as failed so user can retry
+      : (sourceWithStatus.command_id ? 'new' : 'completed')
 
 
   // Track processing state and detect completion

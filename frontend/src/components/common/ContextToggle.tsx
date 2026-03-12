@@ -1,6 +1,6 @@
 'use client'
 
-import { EyeOff, Lightbulb, FileText } from 'lucide-react'
+import { EyeOff, Search, Lightbulb, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -29,6 +29,12 @@ export function ContextToggle({ mode, hasInsights = false, onChange, className }
       color: 'text-muted-foreground',
       bgColor: 'hover:bg-muted'
     },
+    rag: {
+      icon: Search,
+      label: t.common.contextModes.rag,
+      color: 'text-purple-600',
+      bgColor: 'hover:bg-purple-50'
+    },
     insights: {
       icon: Lightbulb,
       label: t.common.contextModes.insights,
@@ -42,13 +48,13 @@ export function ContextToggle({ mode, hasInsights = false, onChange, className }
       bgColor: 'hover:bg-primary/10'
     }
   } as const
-  const config = MODE_CONFIG[mode]
+  const config = MODE_CONFIG[mode] || MODE_CONFIG.rag
   const Icon = config.icon
 
   // Determine available modes based on whether item has insights
   const availableModes: ContextMode[] = hasInsights
-    ? ['off', 'insights', 'full']
-    : ['off', 'full']
+    ? ['off', 'rag', 'insights', 'full']
+    : ['off', 'rag', 'full']
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent card click

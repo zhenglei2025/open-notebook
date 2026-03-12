@@ -123,7 +123,8 @@ export const itIT = {
     completed: "completato",
     saveSuccess: "Salvato con successo",
     contextModes: {
-      off: "Non incluso nella chat",
+      off: "Escluso dal contesto",
+      rag: "Ricerca vettoriale (predefinito)",
       insights: "Solo approfondimenti",
       full: "Contenuto completo",
       clickToCycle: "Clicca per cambiare",

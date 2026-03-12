@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Lightbulb, StickyNote } from 'lucide-react'
+import { FileText, Lightbulb, Search, StickyNote } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 interface ContextIndicatorProps {
   sourcesInsights: number
   sourcesFull: number
+  sourcesRag?: number
   notesCount: number
   tokenCount?: number
   charCount?: number
@@ -28,17 +29,37 @@ function formatNumber(num: number): string {
 export function ContextIndicator({
   sourcesInsights,
   sourcesFull,
+  sourcesRag = 0,
   notesCount,
   tokenCount,
   charCount,
   className
 }: ContextIndicatorProps) {
-  const hasContext = (sourcesInsights + sourcesFull) > 0 || notesCount > 0
+  const hasDirectContext = (sourcesInsights + sourcesFull) > 0 || notesCount > 0
 
-  if (!hasContext) {
+  if (!hasDirectContext && sourcesRag === 0) {
     return (
       <div className={cn('flex-shrink-0 text-xs text-muted-foreground py-2 px-3 border-t', className)}>
         No sources or notes included in context. Toggle icons on cards to include them.
+      </div>
+    )
+  }
+
+  if (!hasDirectContext && sourcesRag > 0) {
+    return (
+      <div className={cn('flex-shrink-0 flex items-center gap-2 py-2 px-3 border-t bg-muted/30', className)}>
+        <span className="text-xs font-medium text-muted-foreground">Context:</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-purple-600 border-purple-600/50 cursor-default">
+              <Search className="h-3 w-3" />
+              <span>RAG</span>
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Vector search active for {sourcesRag} source{sourcesRag !== 1 ? 's' : ''}</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
     )
   }

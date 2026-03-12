@@ -36,6 +36,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
   const contextStats = useMemo(() => {
     let sourcesInsights = 0
     let sourcesFull = 0
+    let sourcesRag = 0
     let notesCount = 0
 
     // Count sources by mode
@@ -45,7 +46,10 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
         sourcesInsights++
       } else if (mode === 'full') {
         sourcesFull++
+      } else if (mode === 'rag') {
+        sourcesRag++
       }
+      // 'off' sources are not counted - they don't participate
     })
 
     // Count notes that are included (not 'off')
@@ -59,6 +63,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
     return {
       sourcesInsights,
       sourcesFull,
+      sourcesRag,
       notesCount,
       tokenCount: chat.tokenCount,
       charCount: chat.charCount

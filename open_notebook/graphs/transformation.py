@@ -30,6 +30,9 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     try:
         if not content:
             content = source.full_text
+        # Truncate to first 2000 characters to prevent LLM context overflow
+        if content and len(content) > 2000:
+            content = content[:2000]
         transformation_template_text = transformation.prompt
         default_prompts: DefaultPrompts = DefaultPrompts(transformation_instructions=None)
         if default_prompts.transformation_instructions:

@@ -123,7 +123,8 @@ export const zhCN = {
     completed: "已完成",
     saveSuccess: "保存成功",
     contextModes: {
-      off: "未包含在聊天中",
+      off: "不参与问答",
+      rag: "向量搜索（默认）",
       insights: "仅限见解",
       full: "全部内容",
       clickToCycle: "点击循环切换",

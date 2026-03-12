@@ -123,7 +123,8 @@ export const zhTW = {
     completed: "已完成",
     saveSuccess: "儲存成功",
     contextModes: {
-      off: "未包含在聊天中",
+      off: "不參與問答",
+      rag: "向量搜尋（預設）",
       insights: "僅限見解",
       full: "全部內容",
       clickToCycle: "點擊循環切換",
