@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Lightbulb, StickyNote } from 'lucide-react'
+import { FileText, Lightbulb, Search, StickyNote } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -35,9 +35,9 @@ export function ContextIndicator({
   charCount,
   className
 }: ContextIndicatorProps) {
-  const hasDirectContext = (sourcesInsights + sourcesFull) > 0 || notesCount > 0
+  const hasAnyContext = (sourcesInsights + sourcesFull + sourcesRag) > 0 || notesCount > 0
 
-  if (!hasDirectContext) {
+  if (!hasAnyContext) {
     return null
   }
 
@@ -71,6 +71,20 @@ export function ContextIndicator({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{sourcesFull} full source{sourcesFull !== 1 ? 's' : ''}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {sourcesRag > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-purple-600 border-purple-600/50 cursor-default">
+                  <Search className="h-3 w-3" />
+                  <span>{sourcesRag}</span>
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{sourcesRag} source{sourcesRag !== 1 ? 's' : ''} via vector search</p>
               </TooltipContent>
             </Tooltip>
           )}
