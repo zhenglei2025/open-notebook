@@ -64,6 +64,14 @@ class EvaluationResult(BaseModel):
     )
 
 
+class ContextExpansionResult(BaseModel):
+    needs_full_context: List[str] = Field(
+        default_factory=list,
+        description="List of source IDs that need full-text context expansion",
+    )
+    reason: str = Field(description="Why these sources need full context")
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Agent State
 # ──────────────────────────────────────────────────────────────────────
@@ -278,6 +286,159 @@ async def _notebook_vector_search(
     logger.info(f"[VectorSearch] Final combined results: {len(results)}")
 
     return results
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Context Expansion helpers
+# ──────────────────────────────────────────────────────────────────────
+
+MAX_FULL_TEXT_LENGTH = 15_000  # Sources with full_text exceeding this are skipped
+
+
+async def _fetch_source_full_text(source_id: str) -> Optional[str]:
+    """Fetch the full_text of a source by its ID.
+    Returns None if text is empty or exceeds MAX_FULL_TEXT_LENGTH."""
+    result = await repo_query(
+        "SELECT full_text FROM source WHERE id = $id",
+        {"id": ensure_record_id(source_id)},
+    )
+    if result and result[0].get("full_text"):
+        text = result[0]["full_text"]
+        if len(text) > MAX_FULL_TEXT_LENGTH:
+            logger.info(
+                f"Source {source_id} full_text too long "
+                f"({len(text)} chars > {MAX_FULL_TEXT_LENGTH}), skipping"
+            )
+            return None
+        return text
+    return None
+
+
+async def _extract_from_single_source(
+    source_id: str,
+    source_title: str,
+    section: Dict[str, Any],
+    config: RunnableConfig,
+) -> Optional[Dict[str, Any]]:
+    """Fetch full text for one source and extract relevant info (≤500 chars)."""
+    full_text = await _fetch_source_full_text(source_id)
+    if not full_text:
+        return None
+
+    prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
+        data={
+            "section_title": section["title"],
+            "section_description": section["description"],
+            "source_title": source_title,
+            "source_id": source_id,
+            "full_text": full_text,
+        }
+    )
+
+    model = await _provision_model(prompt, config, max_tokens=1024)
+    ai_message = await model.ainvoke(prompt)
+    content = extract_text_content(ai_message.content)
+    extracted = clean_thinking_content(content).strip()
+
+    if not extracted:
+        return None
+
+    logger.info(
+        f"Context Expansion: extracted {len(extracted)} chars "
+        f"from source {source_id} ({source_title})"
+    )
+
+    return {
+        "id": source_id,
+        "title": f"[Full-Text Extract] {source_title}",
+        "content": extracted,
+        "parent_id": source_id,
+        "similarity": 1.0,  # High priority since explicitly requested
+    }
+
+
+async def _expand_context(
+    section: Dict[str, Any],
+    relevant_results: List[Dict[str, Any]],
+    config: RunnableConfig,
+) -> List[Dict[str, Any]]:
+    """
+    Context Expansion: judge which sources need full-text reading,
+    then extract relevant info (≤500 chars) from each in parallel.
+    """
+    # Collect unique source IDs from relevant chunks
+    source_ids_in_results = set()
+    source_titles: Dict[str, str] = {}
+    for r in relevant_results:
+        pid = r.get("parent_id") or r.get("id", "")
+        pid_str = str(pid)
+        if pid_str.startswith("source:"):
+            source_ids_in_results.add(pid_str)
+            if pid_str not in source_titles:
+                source_titles[pid_str] = r.get("title", "")
+
+    if not source_ids_in_results:
+        return []
+
+    # Build a summary of chunks grouped by source for the LLM
+    chunks_summary_lines = []
+    for r in relevant_results:
+        pid = str(r.get("parent_id") or r.get("id", ""))
+        title = r.get("title", "")
+        snippet = str(r.get("content", ""))[:150]
+        chunks_summary_lines.append(f"- Source ID: {pid} | {title}\n  Snippet: {snippet}...")
+    chunks_summary = "\n".join(chunks_summary_lines)
+
+    # Step 1: LLM judges which sources need full context
+    parser = PydanticOutputParser(pydantic_object=ContextExpansionResult)
+    prompt = Prompter(prompt_template="deep_research/expand_context", parser=parser).render(
+        data={
+            "section_title": section["title"],
+            "section_description": section["description"],
+            "chunks_summary": chunks_summary,
+        }
+    )
+
+    model = await _provision_model(prompt, config, max_tokens=1024, structured=dict(type="json"))
+    ai_message = await model.ainvoke(prompt)
+    content = extract_text_content(ai_message.content)
+    cleaned = clean_thinking_content(content)
+    expansion_result = parser.parse(cleaned)
+
+    # Filter to only valid source IDs that exist in our results
+    sources_to_expand = [
+        sid for sid in expansion_result.needs_full_context
+        if sid in source_ids_in_results
+    ]
+
+    if not sources_to_expand:
+        logger.info("Context Expansion: no sources need full-text reading")
+        return []
+
+    logger.info(
+        f"Context Expansion: expanding {len(sources_to_expand)} sources: "
+        f"{sources_to_expand} (reason: {expansion_result.reason})"
+    )
+
+    # Step 2: Extract from each source in parallel
+    tasks = [
+        _extract_from_single_source(
+            sid, source_titles.get(sid, ""), section, config
+        )
+        for sid in sources_to_expand
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Collect successful extractions
+    expanded_materials = []
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning(f"Context Expansion: extraction failed: {r}")
+        elif r is not None:
+            expanded_materials.append(r)
+
+    logger.info(f"Context Expansion: got {len(expanded_materials)} extractions")
+    return expanded_materials
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -505,6 +666,25 @@ async def _process_single_section(
             "status": f"Evaluated: {section_title} ({'sufficient' if is_sufficient else 'need more'})",
             "events": list(state.get("events", [])) + events,
         })
+
+    # ── Context Expansion (after evaluate, before write) ──
+    if not is_quick and all_results:
+        try:
+            expanded = await _expand_context(section, all_results, config)
+            if expanded:
+                all_results.extend(expanded)
+                _add_event("context_expanded", {
+                    "section": section_title,
+                    "section_index": section_index,
+                    "expanded_sources": len(expanded),
+                })
+                await _update_job(state, {
+                    "status": f"Context expanded: {section_title} (+{len(expanded)} sources)",
+                    "events": list(state.get("events", [])) + events,
+                })
+        except Exception as e:
+            logger.warning(f"Context Expansion failed for '{section_title}': {e}")
+            # Non-fatal: proceed with original chunks
 
     # ── Write section ──
     write_results = all_results
