@@ -260,6 +260,8 @@ class SettingsResponse(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_batch_size: Optional[int] = None
+    embedding_chunk_size: Optional[int] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
     deep_research_max_search_rounds: Optional[int] = None
@@ -270,6 +272,8 @@ class SettingsUpdate(BaseModel):
     default_content_processing_engine_doc: Optional[str] = None
     default_content_processing_engine_url: Optional[str] = None
     default_embedding_option: Optional[str] = None
+    embedding_batch_size: Optional[int] = None
+    embedding_chunk_size: Optional[int] = None
     auto_delete_files: Optional[str] = None
     youtube_preferred_languages: Optional[List[str]] = None
     deep_research_max_search_rounds: Optional[int] = None

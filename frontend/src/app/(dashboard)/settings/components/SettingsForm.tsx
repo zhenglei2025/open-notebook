@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { useSettings, useUpdateSettings } from '@/lib/hooks/use-settings'
@@ -20,6 +21,8 @@ const settingsSchema = z.object({
   default_content_processing_engine_doc: z.enum(['auto', 'docling', 'simple']).optional(),
   default_content_processing_engine_url: z.enum(['auto', 'firecrawl', 'jina', 'simple']).optional(),
   default_embedding_option: z.enum(['ask', 'always', 'never']).optional(),
+  embedding_batch_size: z.number().min(1).max(200).optional(),
+  embedding_chunk_size: z.number().min(50).max(8192).optional(),
   auto_delete_files: z.enum(['yes', 'no']).optional(),
   deep_research_max_search_rounds: z.number().min(1).max(10).optional(),
   deep_research_enable_context_expansion: z.enum(['yes', 'no']).optional(),
@@ -53,6 +56,8 @@ export function SettingsForm() {
       default_content_processing_engine_doc: undefined,
       default_content_processing_engine_url: undefined,
       default_embedding_option: undefined,
+      embedding_batch_size: undefined,
+      embedding_chunk_size: undefined,
       auto_delete_files: undefined,
       deep_research_max_search_rounds: undefined,
       deep_research_enable_context_expansion: undefined,
@@ -70,6 +75,8 @@ export function SettingsForm() {
         default_content_processing_engine_doc: settings.default_content_processing_engine_doc as 'auto' | 'docling' | 'simple',
         default_content_processing_engine_url: settings.default_content_processing_engine_url as 'auto' | 'firecrawl' | 'jina' | 'simple',
         default_embedding_option: settings.default_embedding_option as 'ask' | 'always' | 'never',
+        embedding_batch_size: settings.embedding_batch_size ?? 32,
+        embedding_chunk_size: settings.embedding_chunk_size ?? 500,
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
         deep_research_max_search_rounds: settings.deep_research_max_search_rounds ?? 3,
         deep_research_enable_context_expansion: (settings.deep_research_enable_context_expansion !== false ? 'yes' : 'no') as 'yes' | 'no',
@@ -229,6 +236,64 @@ export function SettingsForm() {
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
                 <p>{t.settings.embeddingHelp}</p>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="embedding_batch_size">{t.settings.embeddingBatchSize}</Label>
+            <Controller
+              name="embedding_batch_size"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="embedding_batch_size"
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={field.value ?? 32}
+                  onChange={(e) => field.onChange(parseInt(e.target.value, 10) || 32)}
+                  disabled={field.disabled || isLoading}
+                  className="w-full"
+                />
+              )}
+            />
+            <Collapsible open={expandedSections.batchSize} onOpenChange={() => toggleSection('batchSize')}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.batchSize ? 'rotate-180' : ''}`} />
+                {t.settings.helpMeChoose}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                <p>{t.settings.embeddingBatchSizeHelp}</p>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="embedding_chunk_size">{t.settings.embeddingChunkSize}</Label>
+            <Controller
+              name="embedding_chunk_size"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="embedding_chunk_size"
+                  type="number"
+                  min={50}
+                  max={8192}
+                  value={field.value ?? 500}
+                  onChange={(e) => field.onChange(parseInt(e.target.value, 10) || 500)}
+                  disabled={field.disabled || isLoading}
+                  className="w-full"
+                />
+              )}
+            />
+            <Collapsible open={expandedSections.chunkSize} onOpenChange={() => toggleSection('chunkSize')}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.chunkSize ? 'rotate-180' : ''}`} />
+                {t.settings.helpMeChoose}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                <p>{t.settings.embeddingChunkSizeHelp}</p>
               </CollapsibleContent>
             </Collapsible>
           </div>

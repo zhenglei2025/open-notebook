@@ -18,7 +18,7 @@ from loguru import logger
 
 from .chunking import CHUNK_SIZE, ContentType, chunk_text
 
-EMBEDDING_BATCH_SIZE = 50
+DEFAULT_EMBEDDING_BATCH_SIZE = 32
 EMBEDDING_MAX_RETRIES = 3
 EMBEDDING_RETRY_DELAY = 2  # seconds
 
@@ -26,6 +26,40 @@ EMBEDDING_RETRY_DELAY = 2  # seconds
 # utils -> embedding -> models -> key_provider -> provider_config -> utils
 if TYPE_CHECKING:
     from open_notebook.ai.models import ModelManager
+
+
+async def _get_embedding_batch_size() -> int:
+    """Read embedding_batch_size from admin DB settings (shared across all users)."""
+    try:
+        from open_notebook.database.repository import admin_repo_query
+
+        result = await admin_repo_query(
+            "SELECT embedding_batch_size FROM open_notebook:content_settings"
+        )
+        if result and result[0]:
+            val = result[0].get("embedding_batch_size")
+            if isinstance(val, int) and val > 0:
+                return val
+    except Exception:
+        pass
+    return DEFAULT_EMBEDDING_BATCH_SIZE
+
+
+async def _get_embedding_chunk_size() -> int:
+    """Read embedding_chunk_size from admin DB settings (shared across all users)."""
+    try:
+        from open_notebook.database.repository import admin_repo_query
+
+        result = await admin_repo_query(
+            "SELECT embedding_chunk_size FROM open_notebook:content_settings"
+        )
+        if result and result[0]:
+            val = result[0].get("embedding_chunk_size")
+            if isinstance(val, int) and val > 0:
+                return val
+    except Exception:
+        pass
+    return CHUNK_SIZE  # Fall back to module-level default from env var
 
 
 async def mean_pool_embeddings(embeddings: List[List[float]]) -> List[float]:
@@ -90,7 +124,7 @@ async def generate_embeddings(
     """
     Generate embeddings for multiple texts with automatic batching and retry.
 
-    Texts are split into batches of EMBEDDING_BATCH_SIZE to avoid exceeding
+    Texts are split into batches (size read from admin settings) to avoid exceeding
     provider payload limits. Each batch is retried up to EMBEDDING_MAX_RETRIES
     times on transient failures.
 
@@ -119,6 +153,10 @@ async def generate_embeddings(
 
     model_name = getattr(embedding_model, "model_name", "unknown")
 
+    # Read batch size from admin settings
+    batch_size = await _get_embedding_batch_size()
+    logger.debug(f"Using embedding batch size: {batch_size}")
+
     # Log text sizes for debugging
     text_sizes = [len(t) for t in texts]
     logger.debug(
@@ -128,11 +166,11 @@ async def generate_embeddings(
     )
 
     all_embeddings: List[List[float]] = []
-    total_batches = (len(texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
+    total_batches = (len(texts) + batch_size - 1) // batch_size
 
     for batch_idx in range(total_batches):
-        start = batch_idx * EMBEDDING_BATCH_SIZE
-        end = start + EMBEDDING_BATCH_SIZE
+        start = batch_idx * batch_size
+        end = start + batch_size
         batch = texts[start:end]
 
         for attempt in range(1, EMBEDDING_MAX_RETRIES + 1):
@@ -200,17 +238,20 @@ async def generate_embedding(
 
     text = text.strip()
 
+    # Read chunk size from admin settings
+    cs = await _get_embedding_chunk_size()
+
     # Check if chunking is needed
-    if len(text) <= CHUNK_SIZE:
+    if len(text) <= cs:
         # Short text - embed directly
         logger.debug(f"Embedding short text ({len(text)} chars) directly")
         embeddings = await generate_embeddings([text], command_id=command_id)
         return embeddings[0]
 
     # Long text - chunk and mean pool
-    logger.debug(f"Text exceeds chunk size ({len(text)} chars), chunking...")
+    logger.debug(f"Text exceeds chunk size ({len(text)} chars > {cs}), chunking...")
 
-    chunks = chunk_text(text, content_type=content_type, file_path=file_path)
+    chunks = chunk_text(text, content_type=content_type, file_path=file_path, chunk_size=cs)
 
     if not chunks:
         raise ValueError("Text chunking produced no chunks")

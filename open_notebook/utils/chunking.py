@@ -353,27 +353,30 @@ def _get_markdown_splitter() -> MarkdownHeaderTextSplitter:
     )
 
 
-def _get_plain_splitter() -> RecursiveCharacterTextSplitter:
-    """Get plain text splitter using CHUNK_SIZE and CHUNK_OVERLAP constants."""
+def _get_plain_splitter(chunk_size: Optional[int] = None, chunk_overlap: Optional[int] = None) -> RecursiveCharacterTextSplitter:
+    """Get plain text splitter. Uses provided sizes or CHUNK_SIZE/CHUNK_OVERLAP constants."""
+    cs = chunk_size if chunk_size is not None else CHUNK_SIZE
+    co = chunk_overlap if chunk_overlap is not None else (int(cs * 0.15) if chunk_size is not None else CHUNK_OVERLAP)
     return RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
+        chunk_size=cs,
+        chunk_overlap=co,
         length_function=len,
         separators=["\n\n", "\n", ". ", ", ", " ", ""],
     )
 
 
-def _apply_secondary_chunking(chunks: List[str]) -> List[str]:
+def _apply_secondary_chunking(chunks: List[str], chunk_size: Optional[int] = None) -> List[str]:
     """
-    Apply secondary chunking to ensure no chunk exceeds CHUNK_SIZE.
+    Apply secondary chunking to ensure no chunk exceeds the given size.
 
     Used when primary splitters (HTML/Markdown) produce oversized chunks.
     """
     result = []
-    secondary_splitter = _get_plain_splitter()
+    cs = chunk_size if chunk_size is not None else CHUNK_SIZE
+    secondary_splitter = _get_plain_splitter(chunk_size=cs)
 
     for chunk in chunks:
-        if len(chunk) > CHUNK_SIZE:
+        if len(chunk) > cs:
             # Split oversized chunk
             sub_chunks = secondary_splitter.split_text(chunk)
             result.extend(sub_chunks)
@@ -387,6 +390,7 @@ def chunk_text(
     text: str,
     content_type: Optional[ContentType] = None,
     file_path: Optional[str] = None,
+    chunk_size: Optional[int] = None,
 ) -> List[str]:
     """
     Split text into chunks using appropriate splitter for content type.
@@ -395,22 +399,25 @@ def chunk_text(
         text: The text to chunk
         content_type: Optional explicit content type (auto-detected if not provided)
         file_path: Optional file path for content type detection
+        chunk_size: Optional override for chunk size (uses CHUNK_SIZE if not provided)
 
     Returns:
-        List of text chunks, each <= CHUNK_SIZE characters
+        List of text chunks, each <= chunk_size characters
     """
     if not text or not text.strip():
         return []
 
+    cs = chunk_size if chunk_size is not None else CHUNK_SIZE
+
     # Short text doesn't need chunking
-    if len(text) <= CHUNK_SIZE:
+    if len(text) <= cs:
         return [text]
 
     # Detect content type if not provided
     if content_type is None:
         content_type = detect_content_type(text, file_path)
 
-    logger.debug(f"Chunking text with content type: {content_type.value}")
+    logger.debug(f"Chunking text with content type: {content_type.value}, chunk_size: {cs}")
 
     # Select appropriate splitter
     if content_type == ContentType.HTML:
@@ -431,12 +438,12 @@ def chunk_text(
         ]
     else:
         # Plain text - use recursive splitter directly
-        splitter = _get_plain_splitter()
+        splitter = _get_plain_splitter(chunk_size=cs)
         chunks = splitter.split_text(text)
 
     # Apply secondary chunking if needed (for HTML/Markdown that may produce large chunks)
     if content_type in (ContentType.HTML, ContentType.MARKDOWN):
-        chunks = _apply_secondary_chunking(chunks)
+        chunks = _apply_secondary_chunking(chunks, chunk_size=cs)
 
     # Filter out empty chunks
     chunks = [c.strip() for c in chunks if c and c.strip()]

@@ -76,6 +76,14 @@ const getStatusConfig = (t: TranslationKeys) => ({
     label: t.sources.statusProcessing,
     description: t.sources.statusProcessingDesc
   },
+  embedding: {
+    icon: Loader2,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    label: t.sources.statusEmbedding || 'Embedding...',
+    description: t.sources.statusEmbeddingDesc || 'Generating vector embeddings for search'
+  },
   completed: {
     icon: CheckCircle,
     color: 'text-green-600',
@@ -94,10 +102,10 @@ const getStatusConfig = (t: TranslationKeys) => ({
   }
 } as const)
 
-type SourceStatus = 'new' | 'queued' | 'running' | 'completed' | 'failed'
+type SourceStatus = 'new' | 'queued' | 'running' | 'embedding' | 'completed' | 'failed'
 
 function isSourceStatus(status: unknown): status is SourceStatus {
-  return typeof status === 'string' && ['new', 'queued', 'running', 'completed', 'failed'].includes(status)
+  return typeof status === 'string' && ['new', 'queued', 'running', 'embedding', 'completed', 'failed'].includes(status)
 }
 
 function getSourceType(source: SourceListResponse): 'link' | 'upload' | 'text' {
@@ -128,10 +136,14 @@ export function SourceCard({
   // Track processing state to continue polling until we detect completion
   const [wasProcessing, setWasProcessing] = useState(false)
 
+  // Track if we're in the embedding phase (command done, but no embeddings yet)
+  const [isEmbeddingPhase, setIsEmbeddingPhase] = useState(false)
+
   const shouldFetchStatus = !!sourceWithStatus.command_id ||
     sourceWithStatus.status === 'new' ||
     sourceWithStatus.status === 'queued' ||
     sourceWithStatus.status === 'running' ||
+    isEmbeddingPhase || // Keep polling during embedding phase
     wasProcessing // Keep polling if we were processing to catch the completion
 
   const { data: statusData, isLoading: statusLoading } = useSourceStatus(
@@ -142,11 +154,16 @@ export function SourceCard({
   // Determine current status
   // If source has a command_id but no status, treat as "new" (just created)
   const rawStatus = statusData?.status || sourceWithStatus.status
-  const currentStatus: SourceStatus = isSourceStatus(rawStatus)
+  let currentStatus: SourceStatus = isSourceStatus(rawStatus)
     ? rawStatus
     : rawStatus === 'unknown'
       ? 'failed'  // Stale or lost command — treat as failed so user can retry
       : (sourceWithStatus.command_id ? 'new' : 'completed')
+
+  // If command completed but source is not yet embedded, show embedding status
+  if (currentStatus === 'completed' && !source.embedded && (wasProcessing || isEmbeddingPhase || !!sourceWithStatus.command_id)) {
+    currentStatus = 'embedding'
+  }
 
 
   // Track processing state and detect completion
@@ -169,11 +186,34 @@ export function SourceCard({
     if (needsRefresh) {
       setWasProcessing(false) // Stop polling
 
-      if (onRefresh) {
-        setTimeout(() => onRefresh(), 500) // Small delay to ensure API is updated
+      // Check if we need to enter embedding phase
+      if (currentStatusFromData === 'completed' && !source.embedded) {
+        setIsEmbeddingPhase(true)
+        // Refresh to get updated source data (embedded status)
+        if (onRefresh) {
+          setTimeout(() => onRefresh(), 2000)
+        }
+      } else {
+        if (onRefresh) {
+          setTimeout(() => onRefresh(), 500)
+        }
       }
     }
-  }, [statusData, sourceWithStatus.status, wasProcessing, onRefresh, source.id, sourceWithStatus.command_id, source.title])
+
+    // During embedding phase, keep refreshing until embedded becomes true
+    if (isEmbeddingPhase && source.embedded) {
+      setIsEmbeddingPhase(false)
+      if (onRefresh) {
+        setTimeout(() => onRefresh(), 500)
+      }
+    } else if (isEmbeddingPhase && !source.embedded) {
+      // Keep polling by triggering refresh periodically
+      const timer = setTimeout(() => {
+        if (onRefresh) onRefresh()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [statusData, sourceWithStatus.status, wasProcessing, onRefresh, source.id, sourceWithStatus.command_id, source.title, source.embedded, isEmbeddingPhase])
 
   const statusConfig = statusConfigMap[currentStatus] || statusConfigMap.completed
   const StatusIcon = statusConfig.icon
@@ -218,7 +258,7 @@ export function SourceCard({
     }
   }
 
-  const isProcessing: boolean = currentStatus === 'new' || currentStatus === 'running' || currentStatus === 'queued'
+  const isProcessing: boolean = currentStatus === 'new' || currentStatus === 'running' || currentStatus === 'queued' || currentStatus === 'embedding'
   const isFailed: boolean = currentStatus === 'failed'
   const isCompleted: boolean = currentStatus === 'completed'
 

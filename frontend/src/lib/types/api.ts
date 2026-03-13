@@ -56,6 +56,8 @@ export interface SettingsResponse {
   default_content_processing_engine_doc?: string
   default_content_processing_engine_url?: string
   default_embedding_option?: string
+  embedding_batch_size?: number
+  embedding_chunk_size?: number
   auto_delete_files?: string
   youtube_preferred_languages?: string[]
   deep_research_max_search_rounds?: number

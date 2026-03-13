@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command, submit_command
 
 from open_notebook.ai.models import model_manager
-from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query, set_current_user_db
+from open_notebook.database.repository import ensure_record_id, repo_insert, repo_query, set_current_user_db, admin_repo_query
 from open_notebook.exceptions import ConfigurationError
 from open_notebook.domain.notebook import Note, Source, SourceInsight
 from open_notebook.utils.chunking import ContentType, chunk_text, detect_content_type
@@ -375,8 +375,23 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
         content_type = detect_content_type(source.full_text, file_path)
         logger.debug(f"Detected content type: {content_type.value}")
 
+        # Read chunk size from admin settings
+        configured_chunk_size = None
+        try:
+            settings_result = await admin_repo_query(
+                "SELECT embedding_chunk_size FROM open_notebook:content_settings"
+            )
+            if settings_result and settings_result[0]:
+                val = settings_result[0].get("embedding_chunk_size")
+                if isinstance(val, int) and val > 0:
+                    configured_chunk_size = val
+        except Exception:
+            pass
+        if configured_chunk_size:
+            logger.debug(f"Using configured chunk size: {configured_chunk_size}")
+
         # 4. Chunk text using appropriate splitter
-        chunks = chunk_text(source.full_text, content_type=content_type)
+        chunks = chunk_text(source.full_text, content_type=content_type, chunk_size=configured_chunk_size)
         total_chunks = len(chunks)
 
         # Log chunk statistics for debugging

@@ -11,6 +11,8 @@ _DEFAULTS = {
     "default_content_processing_engine_doc": "auto",
     "default_content_processing_engine_url": "auto",
     "default_embedding_option": "ask",
+    "embedding_batch_size": 32,
+    "embedding_chunk_size": 500,
     "auto_delete_files": "yes",
     "youtube_preferred_languages": ["en", "pt", "es", "de", "nl", "en-GB", "fr", "de", "hi", "ja"],
     "deep_research_max_search_rounds": 3,
@@ -65,6 +67,14 @@ def _build_response(data: dict) -> SettingsResponse:
             "default_embedding_option",
             _DEFAULTS["default_embedding_option"],
         ),
+        embedding_batch_size=data.get(
+            "embedding_batch_size",
+            _DEFAULTS["embedding_batch_size"],
+        ),
+        embedding_chunk_size=data.get(
+            "embedding_chunk_size",
+            _DEFAULTS["embedding_chunk_size"],
+        ),
         auto_delete_files=data.get(
             "auto_delete_files",
             _DEFAULTS["auto_delete_files"],
@@ -109,6 +119,10 @@ async def update_settings(settings_update: SettingsUpdate):
             updates["default_content_processing_engine_url"] = settings_update.default_content_processing_engine_url
         if settings_update.default_embedding_option is not None:
             updates["default_embedding_option"] = settings_update.default_embedding_option
+        if settings_update.embedding_batch_size is not None:
+            updates["embedding_batch_size"] = settings_update.embedding_batch_size
+        if settings_update.embedding_chunk_size is not None:
+            updates["embedding_chunk_size"] = settings_update.embedding_chunk_size
         if settings_update.auto_delete_files is not None:
             updates["auto_delete_files"] = settings_update.auto_delete_files
         if settings_update.youtube_preferred_languages is not None:
