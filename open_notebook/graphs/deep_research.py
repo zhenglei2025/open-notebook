@@ -72,6 +72,10 @@ class ContextExpansionResult(BaseModel):
     reason: str = Field(description="Why these sources need full context")
 
 
+class RewrittenQueries(BaseModel):
+    queries: List[str] = Field(description="Two rewritten search queries")
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Agent State
 # ──────────────────────────────────────────────────────────────────────
@@ -547,34 +551,93 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
         notebook_id = state.get("notebook_id")
         question = state["question"]
 
-        # ── Gather notebook context for better outline planning ──
+        # ── Step 1: Gather source previews ──
         source_previews = []
+        preliminary_results = []
 
         if notebook_id:
-            # Get first 200 chars of each source in the notebook
-            previews_raw = await repo_query(
-                """
-                LET $sources = (SELECT VALUE in FROM reference WHERE out = $notebook_id);
-                SELECT
-                    source.title AS title,
-                    content
-                FROM source_embedding
-                WHERE source IN $sources AND order = 0
-                """,
+            logger.info(f"Deep Research: fetching source previews for notebook {notebook_id}")
+
+            source_ids = await repo_query(
+                "SELECT VALUE in FROM reference WHERE out = $notebook_id",
                 {"notebook_id": ensure_record_id(notebook_id)},
             )
-            if previews_raw:
-                for p in previews_raw:
-                    title = p.get("title", "Untitled")
-                    content = str(p.get("content", ""))[:200]
-                    source_previews.append({"title": title, "preview": content})
-                logger.info(f"Deep Research: collected {len(source_previews)} source previews for outline")
+            logger.info(f"Deep Research: found {len(source_ids) if source_ids else 0} sources in notebook")
 
+            if source_ids:
+                previews_raw = await repo_query(
+                    """
+                    SELECT
+                        source.title AS title,
+                        content
+                    FROM source_embedding
+                    WHERE source IN $sources AND order = 0
+                    """,
+                    {"sources": [ensure_record_id(s) if isinstance(s, str) else s for s in source_ids]},
+                )
+                if previews_raw:
+                    for p in previews_raw:
+                        title = p.get("title", "Untitled")
+                        content = str(p.get("content", ""))[:200]
+                        source_previews.append({"title": title, "preview": content})
+                    logger.info(f"Deep Research: collected {len(source_previews)} source previews for outline")
+
+            # ── Step 2: LLM rewrites user query into 2 alternative queries ──
+            rewrite_parser = PydanticOutputParser(pydantic_object=RewrittenQueries)
+            rewrite_prompt = Prompter(
+                prompt_template="deep_research/rewrite_queries", parser=rewrite_parser
+            ).render(
+                data={
+                    "question": question,
+                    "source_previews": source_previews,
+                }
+            )
+            rewrite_model = await _provision_model(
+                rewrite_prompt, config, max_tokens=512, structured=dict(type="json")
+            )
+            rewrite_msg = await rewrite_model.ainvoke(rewrite_prompt)
+            rewrite_content = clean_thinking_content(
+                extract_text_content(rewrite_msg.content)
+            )
+            rewritten = rewrite_parser.parse(rewrite_content)
+            alt_queries = rewritten.queries[:2]  # Cap at 2
+            logger.info(f"Deep Research: rewritten queries = {alt_queries}")
+
+            # ── Step 3: 3 parallel vector searches (original + 2 rewritten), each top 5 ──
+            all_queries = [question] + alt_queries
+            search_tasks = [
+                _notebook_vector_search(q, notebook_id, match_count=5)
+                for q in all_queries
+            ]
+            search_results_list = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+            # Deduplicate by chunk ID, take first 200 chars
+            seen_ids = set()
+            for i, results in enumerate(search_results_list):
+                if isinstance(results, Exception):
+                    logger.warning(f"Deep Research: search {i} failed: {results}")
+                    continue
+                for r in (results or []):
+                    rid = r.get("id", "")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        preliminary_results.append({
+                            "title": r.get("title", ""),
+                            "content": str(r.get("content", ""))[:200],
+                            "similarity": r.get("similarity"),
+                        })
+            logger.info(
+                f"Deep Research: preliminary search found "
+                f"{len(preliminary_results)} unique results from {len(all_queries)} queries"
+            )
+
+        # ── Step 4: LLM plans outline using all gathered context ──
         parser = PydanticOutputParser(pydantic_object=Outline)
         prompt = Prompter(prompt_template="deep_research/outline", parser=parser).render(
             data={
                 "question": question,
                 "source_previews": source_previews,
+                "preliminary_results": preliminary_results,
             }
         )
 
