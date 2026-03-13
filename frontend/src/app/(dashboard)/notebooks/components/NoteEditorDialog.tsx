@@ -13,8 +13,8 @@ import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { cn } from "@/lib/utils";
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { exportToPdf, exportToWord } from '@/lib/utils/export-note'
-import { FileDown, FileText } from 'lucide-react'
+import { exportToPdf, exportToHtml, exportToWord } from '@/lib/utils/export-note'
+import { FileDown, FileText, Globe } from 'lucide-react'
 
 const createNoteSchema = z.object({
   title: z.string().optional(),
@@ -190,6 +190,16 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                 >
                   <FileText className="h-3.5 w-3.5 mr-1" />
                   PDF
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => exportToHtml(watchContent, watchTitle || undefined)}
+                >
+                  <Globe className="h-3.5 w-3.5 mr-1" />
+                  HTML
                 </Button>
                 <Button
                   type="button"

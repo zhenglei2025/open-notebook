@@ -205,6 +205,30 @@ export function exportToPdf(content: string, title?: string): void {
 }
 
 /**
+ * Export note as HTML in a new browser tab.
+ * Same as PDF but without triggering the print dialog.
+ */
+export function exportToHtml(content: string, title?: string): void {
+  const previewHtml = getPreviewHtml()
+  if (!previewHtml) {
+    alert('Please switch editor to preview or live mode to export HTML')
+    return
+  }
+
+  // Clean citation markers from export
+  const cleanedHtml = previewHtml.replace(/\[(source|note|insight):[^\]]+\]/g, '')
+
+  const fullHtml = buildExportHtml(cleanedHtml, title)
+  const htmlWindow = window.open('', '_blank')
+  if (!htmlWindow) {
+    alert('Please allow pop-ups to export HTML')
+    return
+  }
+  htmlWindow.document.write(fullHtml)
+  htmlWindow.document.close()
+}
+
+/**
  * Export note as Word (.doc) using HTML blob.
  * Grabs rendered HTML from the editor preview for exact visual match.
  */

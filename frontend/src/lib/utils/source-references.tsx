@@ -1,11 +1,12 @@
 import React from 'react'
 import { FileText, Lightbulb, FileEdit } from 'lucide-react'
 
-export type ReferenceType = 'source' | 'source_embedding' | 'note' | 'source_insight'
+export type ReferenceType = 'source' | 'source_embedding' | 'note' | 'source_insight' | 'source_title'
 
 export interface ParsedReference {
   type: ReferenceType
   id: string
+  title?: string
   originalText: string
   startIndex: number
   endIndex: number
@@ -29,6 +30,7 @@ export interface ReferenceData {
   number: number
   type: ReferenceType
   id: string
+  title?: string
 }
 
 /**
@@ -44,23 +46,35 @@ export interface ReferenceData {
  * @returns Array of parsed references
  */
 export function parseSourceReferences(text: string): ParsedReference[] {
-  // Match pattern: (source_insight|note|source):alphanumeric_id
-  // This handles references both inside and outside brackets
-  const pattern = /(source_insight|source_embedding|note|source):([a-zA-Z0-9_]+)/g
+  // Match pattern: source_title:id:Title OR (source_insight|note|source):alphanumeric_id
+  // source_title format includes the human-readable title after the second colon
+  const pattern = /(source_title):([a-zA-Z0-9_]+):([^\]\[\n]+?)(?=[\]\s,\n]|$)|(source_insight|source_embedding|note|source):([a-zA-Z0-9_]+)/g
   const matches: ParsedReference[] = []
 
   let match
   while ((match = pattern.exec(text)) !== null) {
-    const type = match[1] as ReferenceType
-    const id = match[2]
-
-    matches.push({
-      type,
-      id,
-      originalText: match[0],
-      startIndex: match.index,
-      endIndex: pattern.lastIndex
-    })
+    if (match[1] === 'source_title') {
+      // source_title:id:Title format
+      matches.push({
+        type: 'source_title',
+        id: match[2],
+        title: match[3].trim(),
+        originalText: match[0],
+        startIndex: match.index,
+        endIndex: pattern.lastIndex
+      })
+    } else {
+      // Standard format: source:id, note:id, etc.
+      const type = match[4] as ReferenceType
+      const id = match[5]
+      matches.push({
+        type,
+        id,
+        originalText: match[0],
+        startIndex: match.index,
+        endIndex: pattern.lastIndex
+      })
+    }
   }
 
   return matches
@@ -173,26 +187,24 @@ export function convertSourceReferences(
  */
 export function convertReferencesToMarkdownLinks(text: string): string {
   // Step 1: Find ALL references using simple greedy pattern
-  const refPattern = /(source_insight|source_embedding|note|source):([a-zA-Z0-9_]+)/g
+  const refPattern = /(source_title):([a-zA-Z0-9_]+):([^\]\[\n]+?)(?=[\]\s,\n]|$)|(source_insight|source_embedding|note|source):([a-zA-Z0-9_]+)/g
   const references: Array<{ type: string; id: string; index: number; length: number }> = []
 
   let match
   while ((match = refPattern.exec(text)) !== null) {
-    const type = match[1]
-    const id = match[2]
+    if (match[1] === 'source_title') {
+      references.push({ type: 'source', id: match[2], index: match.index, length: match[0].length })
+    } else {
+      const type = match[4]
+      const id = match[5]
 
-    // Validate the reference
-    const validTypes = ['source', 'source_embedding', 'source_insight', 'note']
-    if (!validTypes.includes(type) || !id || id.length === 0 || id.length > 100) {
-      continue // Skip invalid references
+      // Validate the reference
+      const validTypes = ['source', 'source_embedding', 'source_insight', 'note']
+      if (!validTypes.includes(type) || !id || id.length === 0 || id.length > 100) {
+        continue // Skip invalid references
+      }
+      references.push({ type, id, index: match.index, length: match[0].length })
     }
-
-    references.push({
-      type,
-      id,
-      index: match.index,
-      length: match[0].length
-    })
   }
 
   // If no references found, return original text
@@ -278,8 +290,10 @@ export function createReferenceLinkComponent(
     if (href?.startsWith('#ref-')) {
       // Parse: #ref-source-abc123 → type=source, id=abc123
       const parts = href.substring(5).split('-') // Remove '#ref-'
-      const type = parts[0] as ReferenceType
+      let type = parts[0] as ReferenceType
       const id = parts.slice(1).join('-') // Rejoin in case ID has dashes
+      // Normalize source_title to source for modal opening
+      if (type === 'source_title') type = 'source' as ReferenceType
 
       // Select appropriate icon based on reference type
       const IconComponent =
@@ -350,12 +364,15 @@ export function convertReferencesToCompactMarkdown(text: string, referencesLabel
   let nextNumber = 1
 
   for (const reference of references) {
-    const key = `${reference.type}:${reference.id}`
+    // Normalize source_title to source for deduplication
+    const normalizedType = reference.type === 'source_title' ? 'source' : reference.type
+    const key = `${normalizedType}:${reference.id}`
     if (!referenceMap.has(key)) {
       referenceMap.set(key, {
         number: nextNumber++,
-        type: reference.type,
-        id: reference.id
+        type: normalizedType as ReferenceType,
+        id: reference.id,
+        title: reference.title,
       })
     }
   }
@@ -401,7 +418,8 @@ export function convertReferencesToCompactMarkdown(text: string, referencesLabel
 
   // Iterate through reference map in insertion order (Map preserves order)
   for (const [, refData] of referenceMap) {
-    const refListItem = `[${refData.number}] - [${refData.type}:${refData.id}](#ref-${refData.type}-${refData.id})`
+    const displayText = refData.title || `${refData.type}:${refData.id}`
+    const refListItem = `[${refData.number}] - [${displayText}](#ref-${refData.type}-${refData.id})`
     refListLines.push(refListItem)
   }
 
@@ -443,8 +461,10 @@ export function createCompactReferenceLinkComponent(
     if (href?.startsWith('#ref-')) {
       // Parse: #ref-source-abc123 → type=source, id=abc123
       const parts = href.substring(5).split('-') // Remove '#ref-'
-      const type = parts[0] as ReferenceType
+      let type = parts[0] as ReferenceType
       const id = parts.slice(1).join('-') // Rejoin in case ID has dashes
+      // Normalize source_title to source for modal opening
+      if (type === 'source_title') type = 'source' as ReferenceType
 
       return (
         <button

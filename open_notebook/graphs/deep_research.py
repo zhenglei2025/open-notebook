@@ -306,26 +306,52 @@ async def _notebook_vector_search(
 # Context Expansion helpers
 # ──────────────────────────────────────────────────────────────────────
 
-MAX_FULL_TEXT_LENGTH = 15_000  # Sources with full_text exceeding this are skipped
+MAX_FULL_TEXT_LENGTH = 15_000  # Per-segment limit for extraction
+MAX_SEGMENTS = 10  # Max number of segments to read (total cap = 150K chars)
 
 
 async def _fetch_source_full_text(source_id: str) -> Optional[str]:
     """Fetch the full_text of a source by its ID.
-    Returns None if text is empty or exceeds MAX_FULL_TEXT_LENGTH."""
+    Returns None if text is empty or exceeds MAX_SEGMENTS * MAX_FULL_TEXT_LENGTH."""
     result = await repo_query(
         "SELECT full_text FROM source WHERE id = $id",
         {"id": ensure_record_id(source_id)},
     )
     if result and result[0].get("full_text"):
         text = result[0]["full_text"]
-        if len(text) > MAX_FULL_TEXT_LENGTH:
+        max_total = MAX_FULL_TEXT_LENGTH * MAX_SEGMENTS
+        if len(text) > max_total:
             logger.info(
                 f"Source {source_id} full_text too long "
-                f"({len(text)} chars > {MAX_FULL_TEXT_LENGTH}), skipping"
+                f"({len(text)} chars > {max_total}), skipping"
             )
             return None
         return text
     return None
+
+
+async def _extract_from_chunk(
+    chunk_text: str,
+    chunk_index: int,
+    source_title: str,
+    source_id: str,
+    section: Dict[str, Any],
+    config: RunnableConfig,
+) -> str:
+    """Extract relevant info from a single chunk of full text."""
+    prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
+        data={
+            "section_title": section["title"],
+            "section_description": section["description"],
+            "source_title": f"{source_title} (part {chunk_index + 1})",
+            "source_id": source_id,
+            "full_text": chunk_text,
+        }
+    )
+    model = await _provision_model(prompt, config, max_tokens=1024)
+    ai_message = await model.ainvoke(prompt)
+    content = extract_text_content(ai_message.content)
+    return clean_thinking_content(content).strip()
 
 
 async def _extract_from_single_source(
@@ -334,25 +360,80 @@ async def _extract_from_single_source(
     section: Dict[str, Any],
     config: RunnableConfig,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch full text for one source and extract relevant info (≤500 chars)."""
+    """Fetch full text for one source and extract relevant info (≤500 chars).
+    If the text exceeds MAX_FULL_TEXT_LENGTH, it is split into segments,
+    each processed in parallel, then consolidated with a final LLM call."""
     full_text = await _fetch_source_full_text(source_id)
     if not full_text:
         return None
 
-    prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
-        data={
-            "section_title": section["title"],
-            "section_description": section["description"],
-            "source_title": source_title,
-            "source_id": source_id,
-            "full_text": full_text,
-        }
-    )
+    if len(full_text) <= MAX_FULL_TEXT_LENGTH:
+        # ── Short text: single-pass extraction ──
+        prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
+            data={
+                "section_title": section["title"],
+                "section_description": section["description"],
+                "source_title": source_title,
+                "source_id": source_id,
+                "full_text": full_text,
+            }
+        )
+        model = await _provision_model(prompt, config, max_tokens=1024)
+        ai_message = await model.ainvoke(prompt)
+        content = extract_text_content(ai_message.content)
+        extracted = clean_thinking_content(content).strip()
+    else:
+        # ── Long text: chunked parallel extraction + consolidation ──
+        # Split into segments of MAX_FULL_TEXT_LENGTH
+        segments = [
+            full_text[i : i + MAX_FULL_TEXT_LENGTH]
+            for i in range(0, len(full_text), MAX_FULL_TEXT_LENGTH)
+        ]
+        segments = segments[:MAX_SEGMENTS]  # Cap at MAX_SEGMENTS
+        logger.info(
+            f"Context Expansion: source {source_id} ({source_title}) "
+            f"split into {len(segments)} segments "
+            f"({len(full_text)} chars total)"
+        )
 
-    model = await _provision_model(prompt, config, max_tokens=1024)
-    ai_message = await model.ainvoke(prompt)
-    content = extract_text_content(ai_message.content)
-    extracted = clean_thinking_content(content).strip()
+        # Extract from each segment in parallel
+        tasks = [
+            _extract_from_chunk(seg, idx, source_title, source_id, section, config)
+            for idx, seg in enumerate(segments)
+        ]
+        chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect successful extractions
+        partial_extractions = []
+        for i, r in enumerate(chunk_results):
+            if isinstance(r, Exception):
+                logger.warning(
+                    f"Context Expansion: chunk {i} extraction failed "
+                    f"for {source_id}: {r}"
+                )
+            elif r:
+                partial_extractions.append(r)
+
+        if not partial_extractions:
+            return None
+
+        # Consolidate with final LLM call
+        combined = "\n\n---\n\n".join(partial_extractions)
+        consolidation_prompt = Prompter(
+            prompt_template="deep_research/consolidate_extractions"
+        ).render(
+            data={
+                "section_title": section["title"],
+                "section_description": section["description"],
+                "source_title": source_title,
+                "source_id": source_id,
+                "partial_extractions": combined,
+            }
+        )
+        model = await _provision_model(consolidation_prompt, config, max_tokens=1024)
+        ai_message = await model.ainvoke(consolidation_prompt)
+        content = extract_text_content(ai_message.content)
+        extracted = clean_thinking_content(content).strip()
 
     if not extracted:
         return None
@@ -468,10 +549,9 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
 
         # ── Gather notebook context for better outline planning ──
         source_previews = []
-        preliminary_results = []
 
         if notebook_id:
-            # 1. Get first 200 chars of each source in the notebook
+            # Get first 200 chars of each source in the notebook
             previews_raw = await repo_query(
                 """
                 LET $sources = (SELECT VALUE in FROM reference WHERE out = $notebook_id);
@@ -490,16 +570,11 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
                     source_previews.append({"title": title, "preview": content})
                 logger.info(f"Deep Research: collected {len(source_previews)} source previews for outline")
 
-            # 2. Preliminary vector search based on the question
-            preliminary_results = await _notebook_vector_search(question, notebook_id, match_count=5)
-            logger.info(f"Deep Research: preliminary search found {len(preliminary_results)} results")
-
         parser = PydanticOutputParser(pydantic_object=Outline)
         prompt = Prompter(prompt_template="deep_research/outline", parser=parser).render(
             data={
                 "question": question,
                 "source_previews": source_previews,
-                "preliminary_results": preliminary_results,
             }
         )
 

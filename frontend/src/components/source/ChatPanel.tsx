@@ -95,6 +95,19 @@ export function ChatPanel({
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Reliable scroll-to-bottom for Radix ScrollArea
+  const scrollToBottom = useCallback((smooth = true) => {
+    // Find the Radix viewport inside ScrollArea
+    const viewport = scrollAreaRef.current?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement | null
+    if (viewport) {
+      if (smooth) {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
+      } else {
+        viewport.scrollTop = viewport.scrollHeight
+      }
+    }
+  }, [])
   const { openModal } = useModalManager()
 
   // Deep Research state
@@ -145,6 +158,8 @@ export function ChatPanel({
               setDeepResearchQuery(null)
               setDeepResearchMode(false)
               setQuickResearchMode(false)
+              // Scroll to bottom after layout settles
+              setTimeout(() => scrollToBottom(), 300)
             }, 200)
           }
         } else {
@@ -153,7 +168,11 @@ export function ChatPanel({
             setDeepResearchReport(status.final_report)
           }
           if (onRefreshMessages) {
-            setTimeout(() => onRefreshMessages(), 1000)
+            setTimeout(() => {
+              onRefreshMessages()
+              // Scroll to bottom after layout settles
+              setTimeout(() => scrollToBottom(), 300)
+            }, 1000)
           }
         }
       } else if (status.status === 'failed') {
@@ -318,8 +337,10 @@ export function ChatPanel({
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    // Use rAF to ensure scroll happens after DOM update and layout
+    const rafId = requestAnimationFrame(() => scrollToBottom())
+    return () => cancelAnimationFrame(rafId)
+  }, [messages, scrollToBottom])
 
   const handleSend = () => {
     if (input.trim() && !isStreaming && !deepResearchRunning) {
@@ -413,7 +434,7 @@ export function ChatPanel({
                         </div>
                       </div>
                     )}
-                    <div className="flex flex-col gap-2 max-w-[80%]">
+                    <div className="flex flex-col gap-2 max-w-[75%] overflow-hidden">
                       <div
                         className={`rounded-lg px-4 py-2 ${message.type === 'human'
                           ? 'bg-primary text-primary-foreground'
