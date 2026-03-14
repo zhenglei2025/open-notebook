@@ -24,11 +24,7 @@ OUTPUT FORMAT (strict JSON, no code fences):
     {
       "layout": "title_slide",
       "title": "Presentation Title",
-      "subtitle": "Subtitle or author info"
-    },
-    {
-      "layout": "section_header",
-      "title": "Section Name"
+      "subtitle": "Author / Date / Subtitle"
     },
     {
       "layout": "title_and_content",
@@ -44,19 +40,28 @@ OUTPUT FORMAT (strict JSON, no code fences):
   ]
 }
 
-AVAILABLE LAYOUTS:
-- "title_slide": Cover slide with title and subtitle. Use for the first slide.
-- "title_and_content": Standard slide with title + bullet points. Use for most content.
-- "section_header": Section divider with title (+ optional subtitle). Use between major topics.
-- "two_content": Side-by-side comparison with title + left column + right column.
+AVAILABLE LAYOUTS (from our custom template):
+
+1. "title_slide" — Cover page with title and subtitle.
+   Fields: "title" (main title), "subtitle" (author/date/subtitle text)
+   Use: FIRST slide only.
+
+2. "title_and_content" — Standard content slide with title + bullet points.
+   Fields: "title" (slide heading), "content" (bullet points, one per line with - prefix)
+   Use: Most content slides. Also use for section dividers (put section name as title, summary as content).
+
+3. "two_content" — Two-column slide with title + left and right columns.
+   Fields: "title" (slide heading), "left" (left column bullets), "right" (right column bullets)
+   Use: Comparisons, pros/cons, before/after.
 
 RULES:
 - Keep the output language identical to the input report language
-- Start with a title_slide
-- Use section_header to separate major topics
+- Start with a "title_slide"
+- Use "title_and_content" for most slides
+- Use "two_content" for comparisons or pros/cons
 - Keep each slide concise (3-5 bullet points max)
-- End with a summary/conclusion slide (title_and_content)
-- Use two_content for comparisons or pros/cons
+- End with a summary/conclusion slide using "title_and_content"
+- Aim for 8-15 slides total
 - Output ONLY valid JSON, no markdown, no code fences
 """
 
