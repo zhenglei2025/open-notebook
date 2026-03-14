@@ -14,7 +14,10 @@ import { InlineEdit } from '@/components/common/InlineEdit'
 import { cn } from "@/lib/utils";
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { exportToPdf, exportToHtml, exportToWord } from '@/lib/utils/export-note'
-import { FileDown, FileText, Globe } from 'lucide-react'
+import { FileDown, FileText, Globe, Presentation } from 'lucide-react'
+import { PptTaskList } from '@/components/common/PptTaskList'
+import { useGeneratePpt } from '@/lib/hooks/use-ppt'
+import { Textarea } from '@/components/ui/textarea'
 
 const createNoteSchema = z.object({
   title: z.string().optional(),
@@ -60,6 +63,9 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
   const watchTitle = useWatch({ control, name: 'title' })
   const watchContent = useWatch({ control, name: 'content' })
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
+  const [pptDialogOpen, setPptDialogOpen] = useState(false)
+  const [pptPrompt, setPptPrompt] = useState('')
+  const generatePpt = useGeneratePpt()
 
   useEffect(() => {
     if (!open) {
@@ -120,6 +126,20 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
     onOpenChange(false)
   }
 
+  const handleGeneratePpt = async () => {
+    if (!noteIdWithPrefix) return
+    try {
+      await generatePpt.mutateAsync({
+        noteId: noteIdWithPrefix,
+        userPrompt: pptPrompt.trim() || undefined,
+      })
+    } catch {
+      // Error handled by mutation's onError if needed
+    }
+    setPptPrompt('')
+    setPptDialogOpen(false)
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={cn(
@@ -178,58 +198,105 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
             </>
           )}
 
-          <div className="border-t px-6 py-4 flex items-center gap-2">
-            {isEditing && watchContent && (
-              <div className="flex gap-1">
+          <div className="border-t px-6 py-4">
+            <div className="flex items-center gap-2">
+              {isEditing && watchContent && (
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => exportToPdf(watchContent, watchTitle || undefined)}
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1" />
+                    PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => exportToHtml(watchContent, watchTitle || undefined)}
+                  >
+                    <Globe className="h-3.5 w-3.5 mr-1" />
+                    HTML
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => exportToWord(watchContent, watchTitle || undefined)}
+                  >
+                    <FileDown className="h-3.5 w-3.5 mr-1" />
+                    Word
+                  </Button>
+                </div>
+              )}
+              <div className="flex-1" />
+              <Button type="button" variant="outline" onClick={handleClose}>
+                {t.common.cancel}
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSaving || (isEditing && noteLoading)}
+              >
+                {isSaving
+                  ? isEditing ? `${t.common.saving}...` : `${t.common.creating}...`
+                  : isEditing
+                    ? t.sources.saveNote
+                    : t.sources.createNoteBtn}
+              </Button>
+              {isEditing && watchContent && (
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => exportToPdf(watchContent, watchTitle || undefined)}
+                  className="ml-2 bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300"
+                  onClick={() => setPptDialogOpen(true)}
+                  disabled={generatePpt.isPending}
                 >
-                  <FileText className="h-3.5 w-3.5 mr-1" />
-                  PDF
+                  <Presentation className="h-3.5 w-3.5 mr-1" />
+                  {t.notes?.generatePpt || 'Make PPT'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => exportToHtml(watchContent, watchTitle || undefined)}
-                >
-                  <Globe className="h-3.5 w-3.5 mr-1" />
-                  HTML
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => exportToWord(watchContent, watchTitle || undefined)}
-                >
-                  <FileDown className="h-3.5 w-3.5 mr-1" />
-                  Word
-                </Button>
-              </div>
+              )}
+            </div>
+
+            {/* PPT task list — always visible below toolbar when editing */}
+            {isEditing && noteIdWithPrefix && (
+              <PptTaskList noteId={noteIdWithPrefix} />
             )}
-            <div className="flex-1" />
-            <Button type="button" variant="outline" onClick={handleClose}>
-              {t.common.cancel}
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSaving || (isEditing && noteLoading)}
-            >
-              {isSaving
-                ? isEditing ? `${t.common.saving}...` : `${t.common.creating}...`
-                : isEditing
-                  ? t.sources.saveNote
-                  : t.sources.createNoteBtn}
-            </Button>
           </div>
         </form>
       </DialogContent>
+
+      {/* PPT prompt — separate popup dialog */}
+      <Dialog open={pptDialogOpen} onOpenChange={setPptDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>{t.notes?.pptRequirements || 'PPT Requirements (optional)'}</DialogTitle>
+          <Textarea
+            value={pptPrompt}
+            onChange={(e) => setPptPrompt(e.target.value)}
+            placeholder={t.notes?.pptPromptPlaceholder || 'e.g. Focus on key findings, keep it under 10 slides...'}
+            className="min-h-[80px] text-sm"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="ghost" onClick={() => setPptDialogOpen(false)}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              type="button"
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={handleGeneratePpt}
+              disabled={generatePpt.isPending}
+            >
+              {generatePpt.isPending ? `${t.notes?.generating || 'Generating'}...` : t.notes?.startGeneration || 'Start'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
+

@@ -64,6 +64,16 @@ export interface SettingsResponse {
   deep_research_enable_context_expansion?: boolean
 }
 
+export interface NotePptTask {
+  id: string
+  note: string
+  title: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  error_message?: string | null
+  created?: string | null
+  updated?: string | null
+}
+
 export interface CreateNotebookRequest {
   name: string
   description?: string

@@ -35,6 +35,7 @@ from api.routers import (
     languages,
     models,
     notebooks,
+    note_ppt,
     notes,
     podcasts,
     search,
@@ -292,6 +293,7 @@ app.include_router(deep_research_router, prefix="/api", tags=["deep-research"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(transformations.router, prefix="/api", tags=["transformations"])
 app.include_router(notes.router, prefix="/api", tags=["notes"])
+app.include_router(note_ppt.router, prefix="/api", tags=["note-ppt"])
 app.include_router(embedding.router, prefix="/api", tags=["embedding"])
 app.include_router(
     embedding_rebuild.router, prefix="/api/embeddings", tags=["embeddings"]

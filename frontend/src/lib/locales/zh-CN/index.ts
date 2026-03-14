@@ -984,4 +984,13 @@ export const zhCN = {
     goToSettings: "前往设置",
     viewDocs: "查看文档",
   },
+  notes: {
+    generatePpt: "制作 PPT",
+    pptTasks: "PPT 任务",
+    pptRequirements: "PPT 要求（可选）",
+    pptPromptPlaceholder: "例如：突出关键发现，控制在 10 页以内...",
+    generating: "生成中",
+    startGeneration: "开始",
+    downloadMarkdown: "下载 Markdown",
+  },
 }

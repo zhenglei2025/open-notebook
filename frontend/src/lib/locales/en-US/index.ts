@@ -985,4 +985,13 @@ export const enUS = {
     goToSettings: "Go to Settings",
     viewDocs: "View docs",
   },
+  notes: {
+    generatePpt: "Make PPT",
+    pptTasks: "PPT Tasks",
+    pptRequirements: "PPT Requirements (optional)",
+    pptPromptPlaceholder: "e.g. Focus on key findings, keep it under 10 slides...",
+    generating: "Generating",
+    startGeneration: "Start",
+    downloadMarkdown: "Download Markdown",
+  },
 }
