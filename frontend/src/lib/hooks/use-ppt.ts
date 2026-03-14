@@ -58,18 +58,19 @@ export function useDeletePpt() {
     })
 }
 
-export async function downloadPptMarkdown(pptId: string) {
+export async function downloadPpt(pptId: string) {
     const res = await apiClient.get(`/notes/ppt/${pptId}/download`, {
         responseType: 'blob',
     })
-    const blob = new Blob([res.data], { type: 'text/markdown' })
+    const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    })
     const url = URL.createObjectURL(blob)
 
     // Extract filename from Content-Disposition (handles UTF-8 filename*)
     const disposition = res.headers['content-disposition']
-    let filename = 'presentation.md'
+    let filename = 'presentation.pptx'
     if (disposition) {
-        // Try filename*=UTF-8''encoded first
         const utf8Match = disposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/i)
         if (utf8Match) {
             filename = decodeURIComponent(utf8Match[1])

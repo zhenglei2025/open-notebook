@@ -1,5 +1,8 @@
-"""Command for generating PPT markdown via LLM."""
+"""Command for generating PPT via LLM + python-pptx."""
 
+import base64
+import json
+import re
 import time
 from typing import Optional
 
@@ -12,16 +15,49 @@ from open_notebook.database.repository import set_current_user_db
 from open_notebook.exceptions import ConfigurationError
 
 SYSTEM_PROMPT = """\
-You are a presentation expert. Convert the following report into a well-structured \
-Markdown presentation using Marp format (slides separated by ---).
+You are a presentation expert. Convert the following report into a structured \
+JSON object that describes a PowerPoint presentation.
 
-Rules:
+OUTPUT FORMAT (strict JSON, no code fences):
+{
+  "slides": [
+    {
+      "layout": "title_slide",
+      "title": "Presentation Title",
+      "subtitle": "Subtitle or author info"
+    },
+    {
+      "layout": "section_header",
+      "title": "Section Name"
+    },
+    {
+      "layout": "title_and_content",
+      "title": "Slide Title",
+      "content": "- Bullet point 1\\n- Bullet point 2\\n- Bullet point 3"
+    },
+    {
+      "layout": "two_content",
+      "title": "Comparison Title",
+      "left": "- Left item 1\\n- Left item 2",
+      "right": "- Right item 1\\n- Right item 2"
+    }
+  ]
+}
+
+AVAILABLE LAYOUTS:
+- "title_slide": Cover slide with title and subtitle. Use for the first slide.
+- "title_and_content": Standard slide with title + bullet points. Use for most content.
+- "section_header": Section divider with title (+ optional subtitle). Use between major topics.
+- "two_content": Side-by-side comparison with title + left column + right column.
+
+RULES:
 - Keep the output language identical to the input report language
-- Each slide should have a clear title (## heading)
-- Use bullet points for key information
-- Include a title slide and a summary/conclusion slide
+- Start with a title_slide
+- Use section_header to separate major topics
 - Keep each slide concise (3-5 bullet points max)
-- Do NOT wrap the output in code fences; output raw Markdown only
+- End with a summary/conclusion slide (title_and_content)
+- Use two_content for comparisons or pros/cons
+- Output ONLY valid JSON, no markdown, no code fences
 """
 
 
@@ -55,7 +91,7 @@ class GeneratePptOutput(CommandOutput):
 async def generate_ppt_command(
     input_data: GeneratePptInput,
 ) -> GeneratePptOutput:
-    """Generate PPT-style markdown from a note using the default chat model."""
+    """Generate PPTX from a note using LLM + python-pptx template."""
     start_time = time.time()
 
     # Restore user database context
@@ -65,6 +101,7 @@ async def generate_ppt_command(
         from open_notebook.ai.provision import provision_langchain_model
         from open_notebook.domain.note_ppt import NotePpt
         from open_notebook.utils import clean_thinking_content
+        from open_notebook.utils.pptx_builder import build_pptx
         from open_notebook.utils.text_utils import extract_text_content
 
         # Update status to running
@@ -95,14 +132,41 @@ async def generate_ppt_command(
         raw = extract_text_content(response.content)
         cleaned = clean_thinking_content(raw)
 
+        # Parse JSON from LLM response
+        # Try to extract JSON from potential code fences
+        json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", cleaned, re.DOTALL)
+        json_str = json_match.group(1) if json_match else cleaned
+
+        try:
+            slides_data = json.loads(json_str)
+        except json.JSONDecodeError:
+            # Try to find JSON object in the text
+            brace_match = re.search(r"\{.*\}", json_str, re.DOTALL)
+            if brace_match:
+                slides_data = json.loads(brace_match.group(0))
+            else:
+                raise ValueError("LLM did not return valid JSON for slides")
+
+        slides = slides_data.get("slides", [])
+        if not slides:
+            raise ValueError("No slides in LLM response")
+
+        logger.info(f"LLM generated {len(slides)} slides for {input_data.note_ppt_id}")
+
+        # Build PPTX
+        pptx_bytes = build_pptx(slides)
+        pptx_b64 = base64.b64encode(pptx_bytes).decode("utf-8")
+
         # Save result
-        ppt.content = cleaned
+        ppt.content = json.dumps(slides_data, ensure_ascii=False, indent=2)
+        ppt.pptx_data = pptx_b64
         ppt.status = "completed"
         await ppt.save()
 
         processing_time = time.time() - start_time
         logger.info(
-            f"PPT generated for {input_data.note_ppt_id} in {processing_time:.1f}s"
+            f"PPT generated for {input_data.note_ppt_id} in {processing_time:.1f}s "
+            f"({len(slides)} slides, {len(pptx_bytes)} bytes)"
         )
 
         return GeneratePptOutput(

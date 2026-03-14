@@ -16,7 +16,8 @@ class NotePpt(ObjectModel):
     table_name: ClassVar[str] = "note_ppt"
     note: str  # note ID (e.g. "note:xxx")
     title: str  # "{note_title} #{seq}"
-    content: Optional[str] = None  # generated markdown
+    content: Optional[str] = None  # generated JSON (slide structure)
+    pptx_data: Optional[str] = None  # base64-encoded .pptx file
     user_prompt: Optional[str] = None  # user's extra requirements
     status: str = "queued"  # queued | running | completed | failed
     error_message: Optional[str] = None

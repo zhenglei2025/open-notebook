@@ -991,6 +991,6 @@ export const zhCN = {
     pptPromptPlaceholder: "例如：突出关键发现，控制在 10 页以内...",
     generating: "生成中",
     startGeneration: "开始",
-    downloadMarkdown: "下载 Markdown",
+    downloadPpt: "下载 PPT",
   },
 }

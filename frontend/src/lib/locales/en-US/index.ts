@@ -992,6 +992,6 @@ export const enUS = {
     pptPromptPlaceholder: "e.g. Focus on key findings, keep it under 10 slides...",
     generating: "Generating",
     startGeneration: "Start",
-    downloadMarkdown: "Download Markdown",
+    downloadPpt: "Download PPT",
   },
 }

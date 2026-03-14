@@ -115,23 +115,26 @@ async def list_ppt_tasks(note_id: str):
 
 @router.get("/notes/ppt/{ppt_id}/download")
 async def download_ppt(ppt_id: str):
-    """Download the generated PPT markdown file."""
+    """Download the generated PPTX file."""
+    import base64
+
     if not ppt_id.startswith("note_ppt:"):
         ppt_id = f"note_ppt:{ppt_id}"
 
     ppt = await NotePpt.get(ppt_id)
     if not ppt:
         raise NotFoundError(f"PPT task {ppt_id} not found")
-    if ppt.status != "completed" or not ppt.content:
+    if ppt.status != "completed" or not ppt.pptx_data:
         raise InvalidInputError("PPT is not ready for download")
 
-    filename = f"{ppt.title}.md"
+    pptx_bytes = base64.b64decode(ppt.pptx_data)
+    filename = f"{ppt.title}.pptx"
     encoded = quote(filename)
     return Response(
-        content=ppt.content.encode("utf-8"),
-        media_type="text/markdown; charset=utf-8",
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={
-            "Content-Disposition": f"attachment; filename=\"presentation.md\"; filename*=UTF-8''{encoded}"
+            "Content-Disposition": f"attachment; filename=\"presentation.pptx\"; filename*=UTF-8''{encoded}"
         },
     )
 

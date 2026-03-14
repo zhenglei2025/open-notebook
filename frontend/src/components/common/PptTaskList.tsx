@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Loader2, CheckCircle, AlertTriangle, Download, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { usePptTasks, useDeletePpt, downloadPptMarkdown } from '@/lib/hooks/use-ppt'
+import { usePptTasks, useDeletePpt, downloadPpt } from '@/lib/hooks/use-ppt'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { NotePptTask } from '@/lib/types/api'
 
@@ -30,7 +30,7 @@ export function PptTaskList({ noteId }: PptTaskListProps) {
     const handleDownload = async (task: NotePptTask) => {
         setDownloading(task.id)
         try {
-            await downloadPptMarkdown(task.id)
+            await downloadPpt(task.id)
         } finally {
             setDownloading(null)
         }
@@ -72,7 +72,7 @@ export function PptTaskList({ noteId }: PptTaskListProps) {
                                         className="h-6 w-6 p-0"
                                         onClick={() => handleDownload(task)}
                                         disabled={downloading === task.id}
-                                        title={t.notes?.downloadMarkdown || 'Download'}
+                                        title={t.notes?.downloadPpt || 'Download PPT'}
                                     >
                                         {downloading === task.id ? (
                                             <Loader2 className="h-3 w-3 animate-spin" />

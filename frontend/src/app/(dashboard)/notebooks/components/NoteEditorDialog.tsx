@@ -232,6 +232,17 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                     <FileDown className="h-3.5 w-3.5 mr-1" />
                     Word
                   </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300"
+                    onClick={() => setPptDialogOpen(true)}
+                    disabled={generatePpt.isPending}
+                  >
+                    <Presentation className="h-3.5 w-3.5 mr-1" />
+                    {t.notes?.generatePpt || 'Make PPT'}
+                  </Button>
                 </div>
               )}
               <div className="flex-1" />
@@ -248,19 +259,6 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                     ? t.sources.saveNote
                     : t.sources.createNoteBtn}
               </Button>
-              {isEditing && watchContent && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="ml-2 bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-300"
-                  onClick={() => setPptDialogOpen(true)}
-                  disabled={generatePpt.isPending}
-                >
-                  <Presentation className="h-3.5 w-3.5 mr-1" />
-                  {t.notes?.generatePpt || 'Make PPT'}
-                </Button>
-              )}
             </div>
 
             {/* PPT task list — always visible below toolbar when editing */}
