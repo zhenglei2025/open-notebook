@@ -12,6 +12,7 @@ export function usePptTasks(noteId?: string) {
             return res.data
         },
         enabled: !!noteId,
+        staleTime: 30_000, // show cached data instantly, refetch in background
         refetchInterval: (query) => {
             // Poll every 3s while any task is still running
             const data = query.state.data

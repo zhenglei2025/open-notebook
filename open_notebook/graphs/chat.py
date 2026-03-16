@@ -66,6 +66,12 @@ def _augment_context_with_chunks(state: ThreadState) -> ThreadState:
 
     Scoped to the current notebook's sources via the reference table.
     """
+    # Skip RAG augmentation if no_context flag is set
+    context_config = state.get("context_config") or {}
+    if context_config.get("no_context"):
+        logger.info("[RAG] no_context flag set, skipping RAG augmentation")
+        return state
+
     messages = state.get("messages", [])
     user_query = ""
     for msg in reversed(messages):
@@ -203,15 +209,18 @@ def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict
             model = _provision_model(str(payload), model_id, "chat", max_tokens=8192)
         except ConfigurationError as ce:
             if "large_context" in str(ce):
-                # Fallback: use vector search to find relevant chunks
-                # instead of sending the full context
+                # Fallback: truncate context to last 15000 chars + current query
                 logger.warning(
                     "Large context model not configured. "
-                    "Falling back to vector search with top 5 chunks."
+                    "Falling back to truncated context (last 15000 chars)."
                 )
-                model, payload = _fallback_to_vector_search(
-                    state, model_id, _provision_model
-                )
+                # Truncate system prompt to last 15000 chars
+                truncated_prompt = system_prompt[-15000:] if len(system_prompt) > 15000 else system_prompt
+                # Keep only the last user message (current query)
+                messages = state.get("messages", [])
+                recent_messages = messages[-1:] if messages else []
+                payload = [SystemMessage(content=truncated_prompt)] + recent_messages
+                model = _provision_model(str(payload), model_id, "chat", max_tokens=8192)
             else:
                 raise
 
@@ -230,86 +239,7 @@ def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict
         raise error_class(user_message) from e
 
 
-def _fallback_to_vector_search(state, model_id, provision_fn):
-    """Fallback to vector search when context is too long.
 
-    Uses the user's last message to find the top 5 most relevant chunks
-    via vector search, then rebuilds the context from those chunks.
-    """
-    from open_notebook.domain.notebook import vector_search
-
-    # Get user's last message for search query
-    messages = state.get("messages", [])
-    user_query = ""
-    for msg in reversed(messages):
-        if hasattr(msg, "type") and msg.type == "human":
-            user_query = msg.content
-            break
-
-    if not user_query:
-        from open_notebook.exceptions import ConfigurationError
-        raise ConfigurationError(
-            "No user message found for vector search fallback."
-        )
-
-    # Run vector search to get relevant chunks
-    def run_vector_search():
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                vector_search(user_query, 5, True, True)
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
-
-    try:
-        asyncio.get_running_loop()
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_vector_search)
-            search_results = future.result()
-    except RuntimeError:
-        search_results = asyncio.run(
-            vector_search(user_query, 5, True, True)
-        )
-
-    # Build context from vector search results
-    chunk_context_parts = []
-    for i, result in enumerate(search_results or [], 1):
-        title = result.get("title", "Unknown")
-        content = ""
-        for match in result.get("matches", []):
-            content += match + "\n"
-        if not content:
-            content = result.get("content", "")
-        chunk_context_parts.append(
-            f"[Chunk {i}] {title}:\n{content}"
-        )
-
-    chunk_context = "\n\n".join(chunk_context_parts) if chunk_context_parts else ""
-
-    logger.info(
-        f"Vector search fallback: found {len(chunk_context_parts)} chunks "
-        f"for query: {user_query[:100]}..."
-    )
-
-    # Rebuild state with shortened context
-    fallback_state = dict(state)
-    fallback_state["context"] = {
-        "sources": [{"title": "Vector Search Results", "content": chunk_context}],
-        "notes": [],
-    }
-
-    # Build new payload with shortened context
-    system_prompt = Prompter(prompt_template="chat/system").render(data=fallback_state)  # type: ignore[arg-type]
-    payload = [SystemMessage(content=system_prompt)] + messages
-
-    # Provision regular chat model (context is now short enough)
-    model = provision_fn(str(payload), model_id, "chat", max_tokens=8192)
-
-    return model, payload
 
 
 conn = sqlite3.connect(

@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope, StopCircle, Zap } from 'lucide-react'
+import { Bot, User, Send, Loader2, FileText, Lightbulb, StickyNote, Clock, Microscope, StopCircle, Zap, ToggleLeft, ToggleRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -21,6 +21,7 @@ import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
 import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from 'sonner'
@@ -41,7 +42,7 @@ interface ChatPanelProps {
   messages: SourceChatMessage[]
   isStreaming: boolean
   contextIndicators: SourceChatContextIndicator | null
-  onSendMessage: (message: string, modelOverride?: string) => void
+  onSendMessage: (message: string, modelOverride?: string, noContext?: boolean) => void
   modelOverride?: string
   onModelChange?: (model?: string) => void
   // Session management props
@@ -93,6 +94,13 @@ export function ChatPanel({
   const chatInputId = useId()
   const [input, setInput] = useState('')
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
+  const [contextEnabledMap, setContextEnabledMap] = useState<Record<string, boolean>>({})
+  const contextEnabled = currentSessionId ? (contextEnabledMap[currentSessionId] ?? true) : true
+  const setContextEnabled = (value: boolean) => {
+    if (currentSessionId) {
+      setContextEnabledMap(prev => ({ ...prev, [currentSessionId]: value }))
+    }
+  }
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -348,7 +356,7 @@ export function ChatPanel({
         setDeepResearchQuery(input.trim())
         handleDeepResearch(input.trim())
       } else {
-        onSendMessage(input.trim(), modelOverride)
+        onSendMessage(input.trim(), modelOverride, !contextEnabled)
       }
       setInput('')
     }
@@ -546,14 +554,45 @@ export function ChatPanel({
 
           {/* Notebook Context Indicator */}
           {notebookContextStats && (
-            <ContextIndicator
-              sourcesInsights={notebookContextStats.sourcesInsights}
-              sourcesFull={notebookContextStats.sourcesFull}
-              sourcesRag={notebookContextStats.sourcesRag}
-              notesCount={notebookContextStats.notesCount}
-              tokenCount={notebookContextStats.tokenCount}
-              charCount={notebookContextStats.charCount}
-            />
+            <div className="flex items-center border-t bg-muted/30">
+              <div className="flex-1">
+                <ContextIndicator
+                  sourcesInsights={notebookContextStats.sourcesInsights}
+                  sourcesFull={notebookContextStats.sourcesFull}
+                  sourcesRag={notebookContextStats.sourcesRag}
+                  notesCount={notebookContextStats.notesCount}
+                  tokenCount={notebookContextStats.tokenCount}
+                  charCount={notebookContextStats.charCount}
+                  className="bg-transparent border-t-0"
+                />
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center mr-2 gap-1 cursor-pointer">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Context 开关：</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 px-1 text-xs gap-0 bg-transparent hover:bg-transparent ${contextEnabled ? 'text-green-600 hover:text-red-500' : 'text-muted-foreground hover:text-green-500'}`}
+                      onClick={() => {
+                        const newValue = !contextEnabled
+                        setContextEnabled(newValue)
+                        if (!newValue) {
+                          setDeepResearchMode(false)
+                          setQuickResearchMode(false)
+                        }
+                      }}
+                    >
+                      {contextEnabled ? <ToggleRight className="h-6 w-6" /> : <ToggleLeft className="h-6 w-6" />}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <div>是否将文件信息加入到对话中</div>
+                  <div>当前状态：{contextEnabled ? '开启' : '关闭'}</div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           )}
 
           {/* Input Area */}
@@ -592,7 +631,7 @@ export function ChatPanel({
                         if (!quickResearchMode) setDeepResearchMode(false)
                       }
                     }
-                    disabled={isStreaming || (deepResearchRunning && !quickResearchMode)}
+                    disabled={isStreaming || (deepResearchRunning && !quickResearchMode) || !contextEnabled}
                   >
                     {deepResearchRunning && quickResearchMode ? (
                       <>
@@ -622,7 +661,7 @@ export function ChatPanel({
                         if (!deepResearchMode) setQuickResearchMode(false)
                       }
                     }
-                    disabled={isStreaming || (deepResearchRunning && !deepResearchMode)}
+                    disabled={isStreaming || (deepResearchRunning && !deepResearchMode) || !contextEnabled}
                   >
                     {deepResearchRunning && deepResearchMode ? (
                       <>

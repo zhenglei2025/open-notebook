@@ -200,7 +200,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   }, [notebookId, sources, notes, contextSelections])
 
   // Send message (synchronous, no streaming)
-  const sendMessage = useCallback(async (message: string, modelOverride?: string) => {
+  const sendMessage = useCallback(async (message: string, modelOverride?: string, noContext?: boolean) => {
     let sessionId = currentSessionId
 
     // Auto-create session if none exists
@@ -241,12 +241,13 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     try {
       // Build context and send message
-      const context = await buildContext()
+      const context = noContext ? { sources: [], notes: [] } : await buildContext()
       const response = await chatApi.sendMessage({
         session_id: sessionId,
         message,
         context,
-        model_override: modelOverride ?? (currentSession?.model_override ?? undefined)
+        model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
+        no_context: noContext,
       })
 
       // Update messages with API response (authoritative — includes all messages)

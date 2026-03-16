@@ -5,6 +5,8 @@ export interface User {
   db_name: string
   is_admin: boolean
   created?: string
+  source_count?: number
+  note_count?: number
 }
 
 export interface CreateUserRequest {

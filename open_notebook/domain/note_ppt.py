@@ -36,14 +36,26 @@ class NotePpt(ObjectModel):
             raise DatabaseOperationError(e)
 
     @classmethod
-    async def count_by_note(cls, note_id: str) -> int:
-        """Count existing PPT tasks for a note (for sequential numbering)."""
+    async def max_seq_by_note(cls, note_id: str) -> int:
+        """Get the maximum sequence number from existing PPT titles for a note.
+
+        Looks at '#N' suffixes in titles to avoid reusing numbers after deletions.
+        """
         try:
             results = await repo_query(
-                "SELECT count() AS cnt FROM note_ppt WHERE note = $note_id GROUP ALL",
+                "SELECT title FROM note_ppt WHERE note = $note_id",
                 {"note_id": note_id},
             )
-            return results[0]["cnt"] if results else 0
+            max_seq = 0
+            for row in results:
+                title = row.get("title", "")
+                if "#" in title:
+                    try:
+                        seq = int(title.rsplit("#", 1)[-1].strip())
+                        max_seq = max(max_seq, seq)
+                    except (ValueError, IndexError):
+                        pass
+            return max_seq
         except Exception as e:
-            logger.error(f"Error counting PPT tasks for note {note_id}: {e}")
+            logger.error(f"Error getting max seq for note {note_id}: {e}")
             return 0

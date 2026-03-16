@@ -18,6 +18,20 @@ SYSTEM_PROMPT = """\
 You are a presentation expert. Convert the following report into a structured \
 JSON object that describes a PowerPoint presentation, using our custom template slides.
 
+IMPORTANT FORMAT RULES (银联模板规范，来源：templateyinlian2.pptx):
+- Font: 方正银联黑简体 (used throughout)
+- Cover title: 48pt, gray RGB(65,65,65), centered
+- Page header: 36pt, gray RGB(130,130,130)
+- Level 1 heading: 24pt, gray RGB(65,65,65), bold, ■ square bullet
+- Level 2 heading: 18pt, gray RGB(65,65,65), □ hollow square bullet
+- Body text: 20pt, gray RGB(65,65,65)
+- Emphasis text: red RGB(244,58,62), bold
+- Line spacing: 1.5x; paragraph spacing: 0pt before, 0.3pt after
+- Number sequences: use 1. 2. 3. for primary level, 1.1 1.2 for secondary
+- Max ~200 characters per content slide (about 11 lines of pure text)
+- Keep content concise and highlight key points
+- Use bullet points for clarity
+
 OUTPUT FORMAT (strict JSON, no code fences):
 {
   "slides": [
@@ -28,31 +42,22 @@ OUTPUT FORMAT (strict JSON, no code fences):
     },
     {
       "layout": "content",
-      "title": "Slide Title",
+      "title": "Section Title",
       "badge": "Key Topic",
-      "content": "- Main point with explanation\\n- Second point with supporting detail\\n- Third point describing key findings\\n- Fourth point with specific data or examples\\n- Fifth point with implications or next steps"
+      "content": "- Main point with explanation\\n- Second point with supporting detail\\n- Third point describing key findings"
     },
     {
       "layout": "two_blocks",
       "title": "Comparison",
-      "left_title": "Pros",
-      "left": "- Advantage 1\\n- Advantage 2",
-      "right_title": "Cons",
-      "right": "- Disadvantage 1\\n- Disadvantage 2"
-    },
-    {
-      "layout": "three_points",
-      "title": "Key Findings",
-      "points": [
-        {"label": "1", "content": "- Finding detail 1"},
-        {"label": "2", "content": "- Finding detail 2"},
-        {"label": "3", "content": "- Finding detail 3"}
-      ]
+      "left_title": "Category A",
+      "left": "- Point 1\\n- Point 2\\n- Point 3",
+      "right_title": "Category B",
+      "right": "- Point 1\\n- Point 2\\n- Point 3"
     },
     {
       "layout": "ending",
-      "title": "Thank You!",
-      "subtitle": "Questions?"
+      "title": "谢  谢！",
+      "subtitle": ""
     }
   ]
 }
@@ -63,43 +68,63 @@ AVAILABLE TEMPLATE SLIDES:
    Fields: "title", "subtitle"
    Use: FIRST slide only.
 
-2. "content" — Content slide with a colored badge label and text body.
-   Fields: "title" (heading), "badge" (short label like section name), "content" (bullet text)
-   Use: Main content slides. Most commonly used.
+2. "content" — Simple content slide for body text and lists (PRIMARY).
+   Fields: "title" (page header), "content" (bullet text or paragraphs)
+   Use: Main content slides. Use this for MOST slides. Clean layout with title and body text.
 
-3. "content_alt" — Same as content but with a different badge style.
-   Fields: "title", "badge", "content"
-   Use: Alternate content slides for visual variety.
+3. "content_badges" — Content slide with badge labels and body text.
+   Fields: "title" (section badge label), "badge" (secondary badge), "content" (bullet text)
+   Use: When you want to emphasize a section with colored badge labels.
 
-4. "two_blocks" — Two content blocks side by side.
-   Fields: "title", "left_title" (left badge), "left" (left bullets), "right_title" (right badge), "right" (right bullets)
-   Use: Comparisons, pros/cons, two categories.
+4. "two_blocks" — Two content blocks (top and bottom rows).
+   Fields: "title" (page header), "left_title" (first row label), "left" (first row bullets), "right_title" (second row label), "right" (second row bullets)
+   Use: Comparisons, two categories.
 
-5. "two_rows" — Two content blocks stacked vertically.
-   Fields: "title", "top_title" (top badge), "top" (top bullets), "bottom_title" (bottom badge), "bottom" (bottom bullets)
-   Use: Sequential information, before/after.
-
-6. "three_points" — Three numbered content areas.
-   Fields: "title", "points" (array of 3 objects with "label" and "content")
-   Use: Three key findings, three steps, three categories.
-
-7. "four_points" — Four numbered content areas in 2x2 grid.
-   Fields: "title", "points" (array of 4 objects with "label" and "content")
-   Use: Four aspects, four categories.
-
-8. "ending" — Thank you / closing page.
-   Fields: "title" (e.g. "Thank You!"), "subtitle" (closing text)
+5. "ending" — Thank you / closing page.
+   Fields: "title" (e.g. "谢  谢！"), "subtitle" (optional closing text)
    Use: LAST slide only.
+
+CHART LAYOUTS (use when content fits a visual pattern):
+
+8. "arrow_flow" — 5-step arrow flow diagram.
+   Fields: "title", "steps" (array of 5 objects with "label" and "content")
+   Use: Process flows, value chains, sequential steps.
+
+9. "timeline" — Horizontal timeline with 4 milestones.
+   Fields: "title", "milestones" (array of 4 strings)
+   Use: Chronological events, development history, project phases.
+
+10. "quadrant" — 4-quadrant analysis chart.
+    Fields: "title", "quadrants" (array of 4 objects with "label" and "content")
+    Use: SWOT analysis, 2×2 matrix, categorization.
+
+11. "card_4col" — 4 column cards with shared banner.
+    Fields: "title", "banner" (subtitle text), "cards" (array of 4 objects with "label" and "content")
+    Use: Feature comparison, service overview, key metrics.
+
+
+13. "cycle_4" — 4-node cycle diagram.
+    Fields: "title", "nodes" (array of 4 objects with "label" and "content")
+    Use: Iterative processes, feedback loops, cyclical workflows.
+
+14. "compare_list" — 3-column comparison table.
+    Fields: "title", "columns" (array of 3 objects with "header" and "items" array of strings)
+    Use: Feature comparison, before/after, multi-option evaluation.
+
+15. "pyramid" — 3-level pyramid hierarchy.
+    Fields: "title", "levels" (array of 3 objects with "label" and "content", top to bottom)
+    Use: Hierarchy, importance ranking, layered architecture.
 
 RULES:
 - Keep the output language identical to the input report language
 - Start with "cover", end with "ending"
-- Use "content" for most slides
+- Use "content" for MOST slides — it is the PRIMARY layout for body text and lists
+- Use CHART LAYOUTS when content naturally fits a visual pattern (flows, timelines, comparisons, etc.)
+- Each PPT should have 2-4 chart slides mixed with content slides for visual variety
 - Use "two_blocks" for comparisons or dual perspectives
-- Use "three_points" or "four_points" for listing key items
-- Alternate between "content" and "content_alt" for visual variety
-- Keep each bullet point informative with enough detail
-- Include 5-8 bullet points per content slide to fill the space well
+- Keep each content slide under 200 characters total
+- Keep chart data fields SHORT (under 15 characters for labels, under 50 for content)
+- Include 3-5 concise bullet points per content slide
 - Aim for 8-15 slides total
 - Output ONLY valid JSON, no markdown, no code fences
 """

@@ -47,9 +47,9 @@ async def generate_ppt(note_id: str, body: GeneratePptRequest):
     if not note.content or not note.content.strip():
         raise InvalidInputError("Note has no content to generate PPT from")
 
-    # Determine sequential title
-    existing_count = await NotePpt.count_by_note(note_id)
-    seq = existing_count + 1
+    # Determine sequential title (monotonically increasing, never reuses deleted numbers)
+    max_seq = await NotePpt.max_seq_by_note(note_id)
+    seq = max_seq + 1
     note_title = note.title or "Untitled"
     ppt_title = f"{note_title} #{seq}"
 

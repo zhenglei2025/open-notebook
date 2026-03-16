@@ -70,6 +70,9 @@ class ExecuteChatRequest(BaseModel):
     model_override: Optional[str] = Field(
         None, description="Optional model override for this message"
     )
+    no_context: bool = Field(
+        False, description="Skip RAG augmentation for direct LLM conversation"
+    )
 
 
 class ExecuteChatResponse(BaseModel):
@@ -360,6 +363,7 @@ async def execute_chat(request: ExecuteChatRequest):
         state_values = current_state.values if current_state else {}
         state_values["messages"] = state_values.get("messages", [])
         state_values["context"] = request.context
+        state_values["context_config"] = {"no_context": request.no_context}
         state_values["model_override"] = model_override
 
         # Resolve notebook from session relationship for notebook-scoped RAG search

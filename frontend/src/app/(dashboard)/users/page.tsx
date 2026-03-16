@@ -17,6 +17,8 @@ import {
     User as UserIcon,
     RefreshCw,
     Loader2,
+    FileText,
+    StickyNote,
 } from 'lucide-react'
 
 export default function UsersPage() {
@@ -171,6 +173,14 @@ export default function UsersPage() {
                                         <div className="flex items-center gap-2">
                                             <Badge variant={user.is_admin ? 'default' : 'secondary'}>
                                                 {user.is_admin ? t.admin.adminRole : t.admin.userRole}
+                                            </Badge>
+                                            <Badge variant="outline" className="gap-1 text-xs">
+                                                <FileText className="h-3 w-3" />
+                                                {user.source_count ?? 0}
+                                            </Badge>
+                                            <Badge variant="outline" className="gap-1 text-xs">
+                                                <StickyNote className="h-3 w-3" />
+                                                {user.note_count ?? 0}
                                             </Badge>
                                             {user.username !== 'admin' && (
                                                 <Button

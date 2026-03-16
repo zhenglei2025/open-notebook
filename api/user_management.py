@@ -269,7 +269,7 @@ async def init_all_user_databases() -> None:
 
 
 async def list_users() -> List[Dict[str, Any]]:
-    """List all users (without password hashes)."""
+    """List all users (without password hashes), including source/note counts."""
     async with admin_db_connection() as db:
         result = parse_record_ids(
             await db.query(
@@ -285,7 +285,53 @@ async def list_users() -> List[Dict[str, Any]]:
                 elif isinstance(r, dict):
                     users.append(r)
 
-        return users
+    # Query each user's database for source/note counts
+    namespace = os.environ.get("SURREAL_NAMESPACE", "open_notebook")
+    for user in users:
+        db_name = user.get("db_name")
+        if not db_name:
+            user["source_count"] = 0
+            user["note_count"] = 0
+            continue
+        try:
+            user_db = AsyncSurreal(get_database_url())
+            await user_db.signin(
+                {
+                    "username": os.environ.get("SURREAL_USER"),
+                    "password": get_database_password(),
+                }
+            )
+            await user_db.use(namespace, db_name)
+
+            # Query source count
+            source_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM source GROUP ALL")
+            )
+            # Query note count
+            note_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM note GROUP ALL")
+            )
+            await user_db.close()
+
+            def extract_count(result):
+                if not result:
+                    return 0
+                if isinstance(result, list):
+                    for item in result:
+                        if isinstance(item, list) and len(item) > 0:
+                            return item[0].get("count", 0)
+                        elif isinstance(item, dict):
+                            return item.get("count", 0)
+                return 0
+
+            user["source_count"] = extract_count(source_result)
+            user["note_count"] = extract_count(note_result)
+        except Exception as e:
+            logger.warning(f"Failed to get stats for user '{user.get('username')}': {e}")
+            user["source_count"] = 0
+            user["note_count"] = 0
+
+    return users
 
 
 async def delete_user(username: str) -> bool:
