@@ -19,6 +19,7 @@ import {
     Loader2,
     FileText,
     StickyNote,
+    Presentation,
 } from 'lucide-react'
 
 export default function UsersPage() {
@@ -181,6 +182,10 @@ export default function UsersPage() {
                                             <Badge variant="outline" className="gap-1 text-xs">
                                                 <StickyNote className="h-3 w-3" />
                                                 {user.note_count ?? 0}
+                                            </Badge>
+                                            <Badge variant="outline" className="gap-1 text-xs">
+                                                <Presentation className="h-3 w-3" />
+                                                {user.ppt_count ?? 0}
                                             </Badge>
                                             {user.username !== 'admin' && (
                                                 <Button

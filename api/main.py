@@ -123,6 +123,19 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
+    # Clean up old PPT records that stored data as base64 in the database
+    try:
+        from open_notebook.database.repository import repo_query
+        old_ppts = await repo_query(
+            "SELECT id FROM note_ppt WHERE pptx_data IS NOT NONE", {}
+        )
+        if old_ppts:
+            for row in old_ppts:
+                await repo_query(f"DELETE {row['id']}", {})
+            logger.info(f"Cleaned up {len(old_ppts)} old PPT records (base64 → filesystem migration)")
+    except Exception as e:
+        logger.warning(f"PPT cleanup skipped: {e}")
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application

@@ -7,6 +7,7 @@ export interface User {
   created?: string
   source_count?: number
   note_count?: number
+  ppt_count?: number
 }
 
 export interface CreateUserRequest {

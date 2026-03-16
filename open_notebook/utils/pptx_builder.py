@@ -11,9 +11,6 @@ from pptx.util import Pt, Emu, Inches
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
-from open_notebook.utils.chart_catalog import (
-    CHART_CATALOG, CHART_FILL_FUNCTIONS,
-)
 
 # Path to our custom template (cleaned 银联品牌模板)
 TEMPLATE_PATH = os.path.join(
@@ -46,8 +43,8 @@ ENDING_TITLE_SIZE = Pt(66)   # 结束词
 LINE_SPACING = 1.5           # 1.5 倍行距
 SPACE_AFTER_PT = Pt(0)       # 段后 0.3 磅（Pt 取整为 0）
 
-# Template slide catalog (0-indexed in template2.pptx)
-# Compact template with only the 14 used slides.
+# Template slide catalog (0-indexed in template1.pptx)
+# 3 slides: cover, content, ending
 
 SLIDE_CATALOG = {
     "cover": {
@@ -57,18 +54,6 @@ SLIDE_CATALOG = {
     "content": {
         "template_index": 1,
         "description": "Simple content slide for body text and lists (primary)",
-    },
-    "content_badges": {
-        "template_index": 4,
-        "description": "Content slide with badge labels and text body",
-    },
-    "content_alt": {
-        "template_index": 3,
-        "description": "Content slide with four title-content blocks",
-    },
-    "two_blocks": {
-        "template_index": 6,
-        "description": "Two content rows with titles",
     },
     "ending": {
         "template_index": 2,
@@ -411,15 +396,8 @@ def _fill_ending(slide: Any, data: dict) -> None:
 FILL_FUNCTIONS = {
     "cover": _fill_cover,
     "content": _fill_content_simple,
-    "content_badges": _fill_content_badges,
-    "content_alt": _fill_content_alt,
-    "two_blocks": _fill_two_blocks,
     "ending": _fill_ending,
 }
-
-# Merge chart catalog entries
-SLIDE_CATALOG.update(CHART_CATALOG)
-FILL_FUNCTIONS.update(CHART_FILL_FUNCTIONS)
 
 
 def build_pptx(slides: list[dict]) -> bytes:

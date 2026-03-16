@@ -292,6 +292,7 @@ async def list_users() -> List[Dict[str, Any]]:
         if not db_name:
             user["source_count"] = 0
             user["note_count"] = 0
+            user["ppt_count"] = 0
             continue
         try:
             user_db = AsyncSurreal(get_database_url())
@@ -311,6 +312,10 @@ async def list_users() -> List[Dict[str, Any]]:
             note_result = parse_record_ids(
                 await user_db.query("SELECT count() FROM note GROUP ALL")
             )
+            # Query PPT count
+            ppt_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM note_ppt GROUP ALL")
+            )
             await user_db.close()
 
             def extract_count(result):
@@ -326,10 +331,12 @@ async def list_users() -> List[Dict[str, Any]]:
 
             user["source_count"] = extract_count(source_result)
             user["note_count"] = extract_count(note_result)
+            user["ppt_count"] = extract_count(ppt_result)
         except Exception as e:
             logger.warning(f"Failed to get stats for user '{user.get('username')}': {e}")
             user["source_count"] = 0
             user["note_count"] = 0
+            user["ppt_count"] = 0
 
     return users
 

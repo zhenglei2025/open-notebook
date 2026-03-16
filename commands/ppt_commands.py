@@ -1,6 +1,6 @@
 """Command for generating PPT via LLM + python-pptx."""
 
-import base64
+
 import json
 import re
 import time
@@ -43,16 +43,7 @@ OUTPUT FORMAT (strict JSON, no code fences):
     {
       "layout": "content",
       "title": "Section Title",
-      "badge": "Key Topic",
       "content": "- Main point with explanation\\n- Second point with supporting detail\\n- Third point describing key findings"
-    },
-    {
-      "layout": "two_blocks",
-      "title": "Comparison",
-      "left_title": "Category A",
-      "left": "- Point 1\\n- Point 2\\n- Point 3",
-      "right_title": "Category B",
-      "right": "- Point 1\\n- Point 2\\n- Point 3"
     },
     {
       "layout": "ending",
@@ -72,58 +63,15 @@ AVAILABLE TEMPLATE SLIDES:
    Fields: "title" (page header), "content" (bullet text or paragraphs)
    Use: Main content slides. Use this for MOST slides. Clean layout with title and body text.
 
-3. "content_badges" — Content slide with badge labels and body text.
-   Fields: "title" (section badge label), "badge" (secondary badge), "content" (bullet text)
-   Use: When you want to emphasize a section with colored badge labels.
-
-4. "two_blocks" — Two content blocks (top and bottom rows).
-   Fields: "title" (page header), "left_title" (first row label), "left" (first row bullets), "right_title" (second row label), "right" (second row bullets)
-   Use: Comparisons, two categories.
-
-5. "ending" — Thank you / closing page.
+3. "ending" — Thank you / closing page.
    Fields: "title" (e.g. "谢  谢！"), "subtitle" (optional closing text)
    Use: LAST slide only.
-
-CHART LAYOUTS (use when content fits a visual pattern):
-
-8. "arrow_flow" — 5-step arrow flow diagram.
-   Fields: "title", "steps" (array of 5 objects with "label" and "content")
-   Use: Process flows, value chains, sequential steps.
-
-9. "timeline" — Horizontal timeline with 4 milestones.
-   Fields: "title", "milestones" (array of 4 strings)
-   Use: Chronological events, development history, project phases.
-
-10. "quadrant" — 4-quadrant analysis chart.
-    Fields: "title", "quadrants" (array of 4 objects with "label" and "content")
-    Use: SWOT analysis, 2×2 matrix, categorization.
-
-11. "card_4col" — 4 column cards with shared banner.
-    Fields: "title", "banner" (subtitle text), "cards" (array of 4 objects with "label" and "content")
-    Use: Feature comparison, service overview, key metrics.
-
-
-13. "cycle_4" — 4-node cycle diagram.
-    Fields: "title", "nodes" (array of 4 objects with "label" and "content")
-    Use: Iterative processes, feedback loops, cyclical workflows.
-
-14. "compare_list" — 3-column comparison table.
-    Fields: "title", "columns" (array of 3 objects with "header" and "items" array of strings)
-    Use: Feature comparison, before/after, multi-option evaluation.
-
-15. "pyramid" — 3-level pyramid hierarchy.
-    Fields: "title", "levels" (array of 3 objects with "label" and "content", top to bottom)
-    Use: Hierarchy, importance ranking, layered architecture.
 
 RULES:
 - Keep the output language identical to the input report language
 - Start with "cover", end with "ending"
-- Use "content" for MOST slides — it is the PRIMARY layout for body text and lists
-- Use CHART LAYOUTS when content naturally fits a visual pattern (flows, timelines, comparisons, etc.)
-- Each PPT should have 2-4 chart slides mixed with content slides for visual variety
-- Use "two_blocks" for comparisons or dual perspectives
+- Use "content" for ALL body slides
 - Keep each content slide under 200 characters total
-- Keep chart data fields SHORT (under 15 characters for labels, under 50 for content)
 - Include 3-5 concise bullet points per content slide
 - Aim for 8-15 slides total
 - Output ONLY valid JSON, no markdown, no code fences
@@ -224,11 +172,12 @@ async def generate_ppt_command(
 
         # Build PPTX
         pptx_bytes = build_pptx(slides)
-        pptx_b64 = base64.b64encode(pptx_bytes).decode("utf-8")
 
-        # Save result
+        # Save file to disk (not in database)
+        ppt.save_pptx_file(pptx_bytes)
+
+        # Save metadata (no binary blob)
         ppt.content = json.dumps(slides_data, ensure_ascii=False, indent=2)
-        ppt.pptx_data = pptx_b64
         ppt.status = "completed"
         await ppt.save()
 

@@ -116,7 +116,7 @@ async def list_ppt_tasks(note_id: str):
 @router.get("/notes/ppt/{ppt_id}/download")
 async def download_ppt(ppt_id: str):
     """Download the generated PPTX file."""
-    import base64
+    import os
 
     if not ppt_id.startswith("note_ppt:"):
         ppt_id = f"note_ppt:{ppt_id}"
@@ -124,10 +124,14 @@ async def download_ppt(ppt_id: str):
     ppt = await NotePpt.get(ppt_id)
     if not ppt:
         raise NotFoundError(f"PPT task {ppt_id} not found")
-    if ppt.status != "completed" or not ppt.pptx_data:
+    if ppt.status != "completed" or not ppt.pptx_path:
         raise InvalidInputError("PPT is not ready for download")
+    if not os.path.exists(ppt.pptx_path):
+        raise NotFoundError("PPT file not found on disk")
 
-    pptx_bytes = base64.b64decode(ppt.pptx_data)
+    with open(ppt.pptx_path, "rb") as f:
+        pptx_bytes = f.read()
+
     filename = f"{ppt.title}.pptx"
     encoded = quote(filename)
     return Response(
@@ -143,7 +147,7 @@ async def download_ppt(ppt_id: str):
 
 @router.delete("/notes/ppt/{ppt_id}")
 async def delete_ppt(ppt_id: str):
-    """Delete a PPT task."""
+    """Delete a PPT task and its file."""
     if not ppt_id.startswith("note_ppt:"):
         ppt_id = f"note_ppt:{ppt_id}"
 
@@ -151,5 +155,7 @@ async def delete_ppt(ppt_id: str):
     if not ppt:
         raise NotFoundError(f"PPT task {ppt_id} not found")
 
+    # Delete file from disk first
+    ppt.delete_pptx_file()
     await ppt.delete()
     return {"success": True}
