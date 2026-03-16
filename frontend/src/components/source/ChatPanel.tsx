@@ -573,7 +573,8 @@ export function ChatPanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className={`h-7 px-1 text-xs gap-0 bg-transparent hover:bg-transparent ${contextEnabled ? 'text-green-600 hover:text-red-500' : 'text-muted-foreground hover:text-green-500'}`}
+                      className={`h-7 px-1 text-xs gap-0 bg-transparent hover:bg-transparent ${deepResearchRunning ? 'opacity-50 cursor-not-allowed' : ''} ${contextEnabled ? 'text-green-600 hover:text-red-500' : 'text-muted-foreground hover:text-green-500'}`}
+                      disabled={deepResearchRunning}
                       onClick={() => {
                         const newValue = !contextEnabled
                         setContextEnabled(newValue)
@@ -590,6 +591,7 @@ export function ChatPanel({
                 <TooltipContent side="top">
                   <div>是否将文件信息加入到对话中</div>
                   <div>当前状态：{contextEnabled ? '开启' : '关闭'}</div>
+                  {deepResearchRunning && <div className="text-yellow-500">研究进行中，无法切换</div>}
                 </TooltipContent>
               </Tooltip>
             </div>
