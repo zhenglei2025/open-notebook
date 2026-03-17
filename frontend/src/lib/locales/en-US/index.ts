@@ -779,6 +779,10 @@ export const enUS = {
     maxSearchRoundsHelp: "Controls how many search-evaluate cycles run per section. More rounds = better coverage but slower. Default: 3",
     enableContextExpansion: "Full-Text Context Expansion",
     enableContextExpansionHelp: "When enabled, the agent reads full source texts for deeper understanding. Disabling saves tokens and speeds up research.",
+    compileMode: "Compile Mode",
+    compileModeSection: "Section-by-Section",
+    compileModeOneshot: "One-Shot",
+    compileModeHelp: "Section-by-Section: LLM polishes each section sequentially for higher quality but slower. One-Shot: all drafts are compiled in a single LLM call for faster results.",
   },
   advanced: {
     title: "AdvancedTools",

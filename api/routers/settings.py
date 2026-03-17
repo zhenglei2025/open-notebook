@@ -17,6 +17,7 @@ _DEFAULTS = {
     "youtube_preferred_languages": ["en", "pt", "es", "de", "nl", "en-GB", "fr", "de", "hi", "ja"],
     "deep_research_max_search_rounds": 3,
     "deep_research_enable_context_expansion": True,
+    "deep_research_compile_mode": "section",
 }
 
 
@@ -91,6 +92,10 @@ def _build_response(data: dict) -> SettingsResponse:
             "deep_research_enable_context_expansion",
             _DEFAULTS["deep_research_enable_context_expansion"],
         ),
+        deep_research_compile_mode=data.get(
+            "deep_research_compile_mode",
+            _DEFAULTS["deep_research_compile_mode"],
+        ),
     )
 
 
@@ -131,6 +136,8 @@ async def update_settings(settings_update: SettingsUpdate):
             updates["deep_research_max_search_rounds"] = settings_update.deep_research_max_search_rounds
         if settings_update.deep_research_enable_context_expansion is not None:
             updates["deep_research_enable_context_expansion"] = settings_update.deep_research_enable_context_expansion
+        if settings_update.deep_research_compile_mode is not None:
+            updates["deep_research_compile_mode"] = settings_update.deep_research_compile_mode
 
         if not updates:
             data = await _get_admin_settings()

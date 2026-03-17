@@ -778,6 +778,10 @@ export const zhCN = {
     maxSearchRoundsHelp: "控制每个章节运行多少次搜索-评估循环。轮次越多覆盖面越广但速度越慢。默认：3",
     enableContextExpansion: "全文上下文扩展",
     enableContextExpansionHelp: "启用后，智能体将阅读来源全文以加深理解。关闭可节省 token 并加快研究速度。",
+    compileMode: "汇编模式",
+    compileModeSection: "分段汇编",
+    compileModeOneshot: "一次汇编",
+    compileModeHelp: "分段汇编：逐章节调用 LLM 润色汇编，质量更高但速度较慢。一次汇编：将所有章节一次性传给 LLM 汇编，速度更快。",
   },
   advanced: {
     title: "高级工具",

@@ -26,6 +26,7 @@ const settingsSchema = z.object({
   auto_delete_files: z.enum(['yes', 'no']).optional(),
   deep_research_max_search_rounds: z.number().min(1).max(10).optional(),
   deep_research_enable_context_expansion: z.enum(['yes', 'no']).optional(),
+  deep_research_compile_mode: z.enum(['section', 'oneshot']).optional(),
 })
 
 type SettingsFormData = z.infer<typeof settingsSchema>
@@ -61,6 +62,7 @@ export function SettingsForm() {
       auto_delete_files: undefined,
       deep_research_max_search_rounds: undefined,
       deep_research_enable_context_expansion: undefined,
+      deep_research_compile_mode: undefined,
     }
   })
 
@@ -80,6 +82,7 @@ export function SettingsForm() {
         auto_delete_files: settings.auto_delete_files as 'yes' | 'no',
         deep_research_max_search_rounds: settings.deep_research_max_search_rounds ?? 3,
         deep_research_enable_context_expansion: (settings.deep_research_enable_context_expansion !== false ? 'yes' : 'no') as 'yes' | 'no',
+        deep_research_compile_mode: (settings.deep_research_compile_mode === 'oneshot' ? 'oneshot' : 'section') as 'section' | 'oneshot',
       }
       reset(formData)
       setHasResetForm(true)
@@ -418,6 +421,40 @@ export function SettingsForm() {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
                   <p>{t.settings.enableContextExpansionHelp}</p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="compile_mode">{t.settings.compileMode}</Label>
+              <Controller
+                name="deep_research_compile_mode"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    key={field.value}
+                    name={field.name}
+                    value={field.value || 'section'}
+                    onValueChange={field.onChange}
+                    disabled={field.disabled || isLoading}
+                  >
+                    <SelectTrigger id="compile_mode" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="section">{t.settings.compileModeSection}</SelectItem>
+                      <SelectItem value="oneshot">{t.settings.compileModeOneshot}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <Collapsible open={expandedSections.compileMode} onOpenChange={() => toggleSection('compileMode')}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.compileMode ? 'rotate-180' : ''}`} />
+                  {t.settings.helpMeChoose}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                  <p>{t.settings.compileModeHelp}</p>
                 </CollapsibleContent>
               </Collapsible>
             </div>

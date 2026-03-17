@@ -266,6 +266,7 @@ class SettingsResponse(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     deep_research_max_search_rounds: Optional[int] = None
     deep_research_enable_context_expansion: Optional[bool] = None
+    deep_research_compile_mode: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -278,6 +279,7 @@ class SettingsUpdate(BaseModel):
     youtube_preferred_languages: Optional[List[str]] = None
     deep_research_max_search_rounds: Optional[int] = None
     deep_research_enable_context_expansion: Optional[bool] = None
+    deep_research_compile_mode: Optional[str] = None
 
 
 # Sources API models
