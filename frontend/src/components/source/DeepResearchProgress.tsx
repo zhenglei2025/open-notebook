@@ -167,7 +167,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 {researchLabel}
                 {isRunning && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
             </div>
-            {isRunning && sections.length === 0 && (
+            {isRunning && (
                 <p className="text-xs text-muted-foreground ml-5">
                     研究中，完成后结果会在这里展示，在此过程中您可以离开这个笔记本或者新建会话
                 </p>
