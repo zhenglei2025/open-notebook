@@ -167,6 +167,11 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 {researchLabel}
                 {isRunning && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
             </div>
+            {isRunning && sections.length === 0 && (
+                <p className="text-xs text-muted-foreground ml-5">
+                    研究中，完成后结果会在这里展示，在此过程中您可以离开这个笔记本或者新建会话
+                </p>
+            )}
 
             {/* Outline */}
             {sections.length > 0 && (
@@ -179,71 +184,76 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                         <p className="text-xs text-muted-foreground ml-5">{outlineReasoning}</p>
                     )}
                 </div>
-            )}
+            )
+            }
 
             {/* Section progress */}
-            {sections.map((section, i) => (
-                <div key={i} className="ml-2 border-l-2 border-muted pl-3 py-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                        {section.summarized ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                        ) : section.written ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />
-                        ) : section.searchAttempts > 0 ? (
-                            <Search className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                        ) : (
-                            <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
-                        )}
-                        <span className="text-xs font-medium">{section.title}</span>
-                    </div>
-
-                    {/* Search info */}
-                    {section.searchAttempts > 0 && (
-                        <div className="ml-5 flex flex-wrap gap-1.5">
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                <Search className="h-2.5 w-2.5 mr-0.5" />
-                                搜索 ×{section.searchAttempts}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                {section.totalResults} 条结果
-                            </Badge>
-                            {section.relevantCount !== undefined && (
-                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                    {section.relevantCount} 条相关
-                                </Badge>
+            {
+                sections.map((section, i) => (
+                    <div key={i} className="ml-2 border-l-2 border-muted pl-3 py-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                            {section.summarized ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                            ) : section.written ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />
+                            ) : section.searchAttempts > 0 ? (
+                                <Search className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                            ) : (
+                                <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
                             )}
-                            {section.expandedSources !== undefined && section.expandedSources > 0 && (
-                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                    {section.expandedSources} 篇查看全文
-                                </Badge>
-                            )}
-                            {section.written && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                                    <PenTool className="h-2.5 w-2.5 mr-0.5" />
-                                    已撰写
-                                </Badge>
-                            )}
-                            {section.summarized && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                                    <FileText className="h-2.5 w-2.5 mr-0.5" />
-                                    已摘要
-                                </Badge>
-                            )}
+                            <span className="text-xs font-medium">{section.title}</span>
                         </div>
-                    )}
-                </div>
-            ))}
+
+                        {/* Search info */}
+                        {section.searchAttempts > 0 && (
+                            <div className="ml-5 flex flex-wrap gap-1.5">
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    <Search className="h-2.5 w-2.5 mr-0.5" />
+                                    搜索 ×{section.searchAttempts}
+                                </Badge>
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {section.totalResults} 条结果
+                                </Badge>
+                                {section.relevantCount !== undefined && (
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                        {section.relevantCount} 条相关
+                                    </Badge>
+                                )}
+                                {section.expandedSources !== undefined && section.expandedSources > 0 && (
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                        {section.expandedSources} 篇查看全文
+                                    </Badge>
+                                )}
+                                {section.written && (
+                                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                        <PenTool className="h-2.5 w-2.5 mr-0.5" />
+                                        已撰写
+                                    </Badge>
+                                )}
+                                {section.summarized && (
+                                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                        <FileText className="h-2.5 w-2.5 mr-0.5" />
+                                        已摘要
+                                    </Badge>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))
+            }
 
             {/* Compiling indicator */}
-            {!report && (isCompiling || (sections.length > 0 && sections.every(s => s.summarized) && isRunning)) && (
-                <div className="flex items-center gap-1.5 text-xs text-primary">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {compiledCount > 0 && compileTotalSections > 0
-                        ? `📋 正在汇编: ${compilingSection} (${compiledCount}/${compileTotalSections})`
-                        : '📋 正在汇编最终报告...'
-                    }
-                </div>
-            )}
-        </div>
+            {
+                !report && (isCompiling || (sections.length > 0 && sections.every(s => s.summarized) && isRunning)) && (
+                    <div className="flex items-center gap-1.5 text-xs text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {compiledCount > 0 && compileTotalSections > 0
+                            ? `📋 正在汇编: ${compilingSection} (${compiledCount}/${compileTotalSections})`
+                            : '📋 正在汇编最终报告...'
+                        }
+                    </div>
+                )
+            }
+        </div >
     )
 }

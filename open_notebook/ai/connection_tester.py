@@ -376,25 +376,36 @@ async def test_individual_model(model) -> Tuple[bool, str]:
     """
     from open_notebook.ai.models import ModelManager
 
+    logger.info(
+        f"[ModelTest] Starting test for model: id={model.id}, "
+        f"name={model.name}, provider={model.provider}, type={model.type}"
+    )
+
     try:
         manager = ModelManager()
         esp_model = await manager.get_model(model.id)
 
         if esp_model is None:
+            logger.warning(f"[ModelTest] Could not create model instance for {model.id}")
             return False, "Could not create model instance"
 
         if model.type == "language":
-            response = await esp_model.achat_complete(
-                messages=[{"role": "user", "content": "Hi!"}]
-            )
+            test_messages = [{"role": "user", "content": "Hi!"}]
+            logger.info(f"[ModelTest] Sending chat request: messages={test_messages}")
+            response = await esp_model.achat_complete(messages=test_messages)
             text = response.content[:100] if response.content else "(empty response)"
+            logger.info(f"[ModelTest] Chat response received: {text}")
             return True, f"Response: {text}"
 
         elif model.type == "embedding":
-            result = await esp_model.aembed(["This is a test."])
+            test_input = ["This is a test."]
+            logger.info(f"[ModelTest] Sending embedding request: input={test_input}")
+            result = await esp_model.aembed(test_input)
             if result and len(result) > 0:
                 dims = len(result[0])
+                logger.info(f"[ModelTest] Embedding response received: dims={dims}")
                 return True, f"Embedding dimensions: {dims}"
+            logger.info("[ModelTest] Embedding response received (no dimensions)")
             return True, "Embedding successful"
 
         elif model.type == "text_to_speech":
@@ -410,29 +421,38 @@ async def test_individual_model(model) -> Tuple[bool, str]:
             if not voice:
                 voice = "alloy"  # fallback
 
+            test_text = "Hello from Open Notebook"
+            logger.info(f"[ModelTest] Sending TTS request: text='{test_text}', voice='{voice}'")
             result = await esp_model.agenerate_speech(
-                text="Hello from Open Notebook", voice=voice
+                text=test_text, voice=voice
             )
             if result and hasattr(result, "content"):
                 size = len(result.content)
+                logger.info(f"[ModelTest] TTS response received: {size} bytes")
                 return True, f"Audio generated: {size} bytes"
+            logger.info("[ModelTest] TTS response received (no content)")
             return True, "Speech generation successful"
 
         elif model.type == "speech_to_text":
             audio_file = _generate_test_wav()
+            logger.info(f"[ModelTest] Sending STT request: audio_file=test.wav (0.5s silence), language=en")
             result = await esp_model.atranscribe(
                 audio_file=audio_file, language="en"
             )
             text = str(result.text) if hasattr(result, "text") else str(result)
+            logger.info(f"[ModelTest] STT response received: {text[:100]}")
             return True, f"Transcription: {text[:100]}"
 
         else:
+            logger.warning(f"[ModelTest] Unsupported model type: {model.type}")
             return False, f"Unsupported model type: {model.type}"
 
     except Exception as e:
         error_msg = str(e)
         success, normalized = _normalize_error_message(error_msg)
         if success:
+            logger.info(f"[ModelTest] Test passed with note for {model.id}: {normalized}")
             return True, normalized
-        logger.debug(f"Test individual model error for {model.id}: {e}")
+        logger.warning(f"[ModelTest] Test failed for {model.id}: {normalized}")
+        logger.debug(f"[ModelTest] Full error for {model.id}: {e}")
         return False, normalized
