@@ -617,66 +617,80 @@ export function ChatPanel({
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">工具</span>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant={deepResearchRunning && quickResearchMode ? 'destructive' : quickResearchMode ? 'default' : 'outline'}
-                    size="sm"
-                    className={`h-7 text-xs gap-1.5 ${deepResearchRunning && quickResearchMode
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : quickResearchMode
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'hover:border-blue-400 hover:text-blue-600'
-                      }`}
-                    onClick={deepResearchRunning && quickResearchMode
-                      ? handleStopDeepResearch
-                      : () => {
-                        setQuickResearchMode(!quickResearchMode)
-                        if (!quickResearchMode) setDeepResearchMode(false)
-                      }
-                    }
-                    disabled={isStreaming || (deepResearchRunning && !quickResearchMode) || !contextEnabled}
-                  >
-                    {deepResearchRunning && quickResearchMode ? (
-                      <>
-                        <StopCircle className="h-3 w-3" />
-                        停止研究
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-3 w-3" />
-                        Quick Research
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant={deepResearchRunning && deepResearchMode ? 'destructive' : deepResearchMode ? 'default' : 'outline'}
-                    size="sm"
-                    className={`h-7 text-xs gap-1.5 ${deepResearchRunning && deepResearchMode
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : deepResearchMode
-                        ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                        : 'hover:border-purple-400 hover:text-purple-600'
-                      }`}
-                    onClick={deepResearchRunning && deepResearchMode
-                      ? handleStopDeepResearch
-                      : () => {
-                        setDeepResearchMode(!deepResearchMode)
-                        if (!deepResearchMode) setQuickResearchMode(false)
-                      }
-                    }
-                    disabled={isStreaming || (deepResearchRunning && !deepResearchMode) || !contextEnabled}
-                  >
-                    {deepResearchRunning && deepResearchMode ? (
-                      <>
-                        <StopCircle className="h-3 w-3" />
-                        停止研究
-                      </>
-                    ) : (
-                      <>
-                        <Microscope className="h-3 w-3" />
-                        Deep Research
-                      </>
-                    )}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={deepResearchRunning && quickResearchMode ? 'destructive' : quickResearchMode ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs gap-1.5 ${deepResearchRunning && quickResearchMode
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : quickResearchMode
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'hover:border-blue-400 hover:text-blue-600'
+                          }`}
+                        onClick={deepResearchRunning && quickResearchMode
+                          ? handleStopDeepResearch
+                          : () => {
+                            setQuickResearchMode(!quickResearchMode)
+                            if (!quickResearchMode) setDeepResearchMode(false)
+                          }
+                        }
+                        disabled={isStreaming || (deepResearchRunning && !quickResearchMode) || !contextEnabled}
+                      >
+                        {deepResearchRunning && quickResearchMode ? (
+                          <>
+                            <StopCircle className="h-3 w-3" />
+                            停止研究
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-3 w-3" />
+                            Quick Research
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <div>快速生成报告</div>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={deepResearchRunning && deepResearchMode ? 'destructive' : deepResearchMode ? 'default' : 'outline'}
+                        size="sm"
+                        className={`h-7 text-xs gap-1.5 ${deepResearchRunning && deepResearchMode
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : deepResearchMode
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                            : 'hover:border-purple-400 hover:text-purple-600'
+                          }`}
+                        onClick={deepResearchRunning && deepResearchMode
+                          ? handleStopDeepResearch
+                          : () => {
+                            setDeepResearchMode(!deepResearchMode)
+                            if (!deepResearchMode) setQuickResearchMode(false)
+                          }
+                        }
+                        disabled={isStreaming || (deepResearchRunning && !deepResearchMode) || !contextEnabled}
+                      >
+                        {deepResearchRunning && deepResearchMode ? (
+                          <>
+                            <StopCircle className="h-3 w-3" />
+                            停止研究
+                          </>
+                        ) : (
+                          <>
+                            <Microscope className="h-3 w-3" />
+                            Deep Research
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <div>深度研究生成报告</div>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             )}
