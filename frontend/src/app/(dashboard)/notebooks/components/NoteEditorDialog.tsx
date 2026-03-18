@@ -13,7 +13,7 @@ import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { cn } from "@/lib/utils";
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { exportToPdf, exportToHtml, exportToWord } from '@/lib/utils/export-note'
+import { exportToPdf, exportToHtml } from '@/lib/utils/export-note'
 import { FileDown, FileText, Globe, Presentation } from 'lucide-react'
 import { PptTaskList } from '@/components/common/PptTaskList'
 import { useGeneratePpt } from '@/lib/hooks/use-ppt'
@@ -227,7 +227,30 @@ export function NoteEditorDialog({ open, onOpenChange, notebookId, note }: NoteE
                     variant="ghost"
                     size="sm"
                     className="text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => exportToWord(watchContent, watchTitle || undefined)}
+                    onClick={async () => {
+                      if (!noteIdWithPrefix) return
+                      try {
+                        const { default: apiClient } = await import('@/lib/api/client')
+                        const response = await apiClient.get(
+                          `/notes/${encodeURIComponent(noteIdWithPrefix)}/export/docx`,
+                          { responseType: 'blob' }
+                        )
+                        const blob = new Blob([response.data], {
+                          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                        })
+                        const url = URL.createObjectURL(blob)
+                        const link = document.createElement('a')
+                        link.href = url
+                        link.download = `${watchTitle || 'note'}.docx`
+                        document.body.appendChild(link)
+                        link.click()
+                        document.body.removeChild(link)
+                        URL.revokeObjectURL(url)
+                      } catch (err) {
+                        console.error('Word export failed:', err)
+                        alert('Word export failed')
+                      }
+                    }}
                   >
                     <FileDown className="h-3.5 w-3.5 mr-1" />
                     Word

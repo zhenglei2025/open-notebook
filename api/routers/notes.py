@@ -1,11 +1,14 @@
+import re
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from api.models import NoteCreate, NoteResponse, NoteUpdate
 from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import InvalidInputError
+from open_notebook.utils.word_export import markdown_to_docx
 
 router = APIRouter()
 
@@ -189,3 +192,36 @@ async def delete_note(note_id: str):
     except Exception as e:
         logger.error(f"Error deleting note {note_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting note: {str(e)}")
+
+
+@router.get("/notes/{note_id}/export/docx")
+async def export_note_docx(note_id: str):
+    """Export a note as a formatted Word (.docx) document."""
+    try:
+        note = await Note.get(note_id)
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        content = note.content or ""
+        title = note.title or "Untitled"
+
+        buffer = markdown_to_docx(content, title)
+
+        # Sanitize filename — use URL encoding for non-ASCII (RFC 5987)
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:100]
+        from urllib.parse import quote
+        encoded_title = quote(safe_title)
+
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"note.docx\"; filename*=UTF-8''{encoded_title}.docx",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting note {note_id} to docx: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting note: {str(e)}")
+

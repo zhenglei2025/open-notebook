@@ -108,8 +108,7 @@ async def _get_deep_research_settings() -> dict:
     """Read deep research settings from admin DB (shared across all users)."""
     try:
         result = await admin_repo_query(
-            "SELECT deep_research_max_search_rounds, deep_research_enable_context_expansion, "
-            "deep_research_compile_mode "
+            "SELECT deep_research_max_search_rounds, deep_research_enable_context_expansion "
             "FROM open_notebook:content_settings"
         )
         if result and result[0]:
@@ -1002,114 +1001,66 @@ async def compile_report(state: DeepResearchState, config: RunnableConfig) -> di
                     parts.append(f"## {title}\n\n{draft_stripped}")
             final_report = "\n\n---\n\n".join(parts)
         else:
-            # Read compile mode setting
-            dr_settings = await _get_deep_research_settings()
-            compile_mode = dr_settings.get("deep_research_compile_mode", "section")
-
+            # Deep Research: incremental section-by-section LLM compile
             compiling_events = _emit_event(state, "compiling", {})
             await _update_job(state, {"events": compiling_events})
             state = {**state, "events": compiling_events}
 
+            compiled_parts: list[str] = []
             outline_formatted = _format_outline(outline)
 
-            if compile_mode == "oneshot":
-                # One-shot compile: concat all drafts and send to LLM once
-                all_draft_parts = []
-                for i, (section, draft) in enumerate(zip(outline, drafts)):
-                    draft_stripped = draft.strip()
-                    title = section['title']
-                    if draft_stripped.startswith(f"## {title}") or draft_stripped.startswith(f"# {title}"):
-                        all_draft_parts.append(draft_stripped)
-                    else:
-                        all_draft_parts.append(f"## {title}\n\n{draft_stripped}")
+            for i, (section, draft) in enumerate(zip(outline, drafts)):
+                is_first = (i == 0)
+                is_last = (i == len(outline) - 1)
 
-                all_drafts_text = "\n\n---\n\n".join(all_draft_parts)
+                # Build current draft with title
+                draft_stripped = draft.strip()
+                title = section['title']
+                if draft_stripped.startswith(f"## {title}") or draft_stripped.startswith(f"# {title}"):
+                    current_draft = draft_stripped
+                else:
+                    current_draft = f"## {title}\n\n{draft_stripped}"
 
-                prompt = Prompter(prompt_template="deep_research/compile_oneshot").render(
+                # Already compiled sections as context
+                compiled_so_far = "\n\n".join(compiled_parts) if compiled_parts else ""
+
+                prompt = Prompter(prompt_template="deep_research/compile_section").render(
                     data={
                         "question": state["question"],
                         "outline": outline_formatted,
-                        "all_drafts": all_drafts_text,
+                        "compiled_so_far": compiled_so_far,
+                        "current_draft": current_draft,
+                        "is_first_section": is_first,
+                        "is_last_section": is_last,
                     }
                 )
 
-                model = await _provision_model(prompt, config, max_tokens=16384)
+                model = await _provision_model(prompt, config, max_tokens=8192)
                 ai_message = await model.ainvoke(prompt)
+
                 content = extract_text_content(ai_message.content)
-                final_report = clean_thinking_content(content)
+                compiled_section = clean_thinking_content(content)
+                compiled_parts.append(compiled_section)
 
                 logger.info(
-                    f"Deep Research: one-shot compiled final report "
-                    f"({len(final_report)} chars)"
+                    f"Deep Research: compiled section [{i}] "
+                    f"'{title}' ({len(compiled_section)} chars)"
                 )
 
                 compile_events = _emit_event(state, "compile_section_done", {
-                    "section": "全部",
-                    "section_index": 0,
-                    "compiled_count": len(outline),
+                    "section": title,
+                    "section_index": i,
+                    "compiled_count": i + 1,
                     "total_sections": len(outline),
                 })
                 state = {**state, "events": compile_events}
+
                 await _update_job(state, {
-                    "status": "Compiling: one-shot complete",
+                    "status": f"Compiling: {title} ({i + 1}/{len(outline)})",
                     "events": compile_events,
                 })
-            else:
-                # Section-by-section compile (default)
-                compiled_parts: list[str] = []
 
-                for i, (section, draft) in enumerate(zip(outline, drafts)):
-                    is_first = (i == 0)
-                    is_last = (i == len(outline) - 1)
-
-                    # Build current draft with title
-                    draft_stripped = draft.strip()
-                    title = section['title']
-                    if draft_stripped.startswith(f"## {title}") or draft_stripped.startswith(f"# {title}"):
-                        current_draft = draft_stripped
-                    else:
-                        current_draft = f"## {title}\n\n{draft_stripped}"
-
-                    # Already compiled sections as context
-                    compiled_so_far = "\n\n".join(compiled_parts) if compiled_parts else ""
-
-                    prompt = Prompter(prompt_template="deep_research/compile_section").render(
-                        data={
-                            "question": state["question"],
-                            "outline": outline_formatted,
-                            "compiled_so_far": compiled_so_far,
-                            "current_draft": current_draft,
-                            "is_first_section": is_first,
-                            "is_last_section": is_last,
-                        }
-                    )
-
-                    model = await _provision_model(prompt, config, max_tokens=8192)
-                    ai_message = await model.ainvoke(prompt)
-
-                    content = extract_text_content(ai_message.content)
-                    compiled_section = clean_thinking_content(content)
-                    compiled_parts.append(compiled_section)
-
-                    logger.info(
-                        f"Deep Research: compiled section [{i}] "
-                        f"'{title}' ({len(compiled_section)} chars)"
-                    )
-
-                    compile_events = _emit_event(state, "compile_section_done", {
-                        "section": title,
-                        "section_index": i,
-                        "compiled_count": i + 1,
-                        "total_sections": len(outline),
-                    })
-                    state = {**state, "events": compile_events}
-
-                    await _update_job(state, {
-                        "status": f"Compiling: {title} ({i + 1}/{len(outline)})",
-                        "events": compile_events,
-                    })
-
-                final_report = "\n\n".join(compiled_parts)
+            final_report = "\n\n".join(compiled_parts)
 
         research_label = "Quick" if is_quick else "Deep"
         logger.info(f"{research_label} Research: compiled final report ({len(final_report)} chars)")
