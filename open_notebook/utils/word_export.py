@@ -140,6 +140,18 @@ def markdown_to_docx(markdown_text: str, title: Optional[str] = None) -> io.Byte
         rPr.insert(0, rFonts)
     rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
 
+    # Override heading styles to use black color instead of default blue
+    for heading_level in range(1, 5):
+        heading_style = doc.styles[f'Heading {heading_level}']
+        heading_style.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+        heading_style.font.name = 'Microsoft YaHei'
+        h_rPr = heading_style.element.get_or_add_rPr()
+        h_rFonts = h_rPr.find(qn('w:rFonts'))
+        if h_rFonts is None:
+            h_rFonts = heading_style.element.makeelement(qn('w:rFonts'), {})
+            h_rPr.insert(0, h_rFonts)
+        h_rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
+
     # Add title if provided
     if title:
         title_para = doc.add_heading(title, level=0)
