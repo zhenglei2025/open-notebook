@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { Controller } from "react-hook-form"
 
 interface CreateSourceFormData {
@@ -67,16 +68,18 @@ import { TranslationKeys } from '@/lib/locales'
 
 const getSourceTypes = (t: TranslationKeys) => [
   {
-    value: 'link' as const,
-    label: t.sources.addUrl,
-    icon: LinkIcon,
-    description: t.sources.processDescription,
-  },
-  {
     value: 'upload' as const,
     label: t.sources.uploadFile,
     icon: FileIcon,
     description: t.sources.processDescription,
+  },
+  {
+    value: 'link' as const,
+    label: t.sources.addUrl,
+    icon: LinkIcon,
+    description: t.sources.processDescription,
+    disabled: true,
+    tooltip: '暂未开放，等待联网',
   },
   {
     value: 'text' as const,
@@ -163,27 +166,47 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
           control={control}
           name="type"
           render={({ field }) => (
-            <Tabs 
-              value={field.value || ''} 
+            <Tabs
+              value={field.value || ''}
               onValueChange={(value) => field.onChange(value as 'link' | 'upload' | 'text')}
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-3">
                 {getSourceTypes(t).map((type) => {
                   const Icon = type.icon
-                  return (
-                    <TabsTrigger key={type.value} value={type.value} className="gap-2">
+                  const trigger = (
+                    <TabsTrigger
+                      key={type.value}
+                      value={type.value}
+                      className={`gap-2 ${type.disabled ? 'opacity-50 pointer-events-none' : ''}`}
+                      disabled={type.disabled}
+                    >
                       <Icon className="h-4 w-4" />
                       {type.label}
                     </TabsTrigger>
                   )
+                  if (type.disabled && type.tooltip) {
+                    return (
+                      <Tooltip key={type.value}>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            {trigger}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <div>{type.tooltip}</div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )
+                  }
+                  return trigger
                 })}
               </TabsList>
-              
+
               {getSourceTypes(t).map((type) => (
                 <TabsContent key={type.value} value={type.value} className="mt-4">
                   <p className="text-sm text-muted-foreground mb-4">{type.description}</p>
-                  
+
                   {/* Type-specific fields */}
                   {type.value === 'link' && (
                     <div>
@@ -233,7 +256,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                       )}
                     </div>
                   )}
-                  
+
                   {type.value === 'upload' && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -281,7 +304,7 @@ export function SourceTypeStep({ control, register, setValue, errors, urlValidat
                       )}
                     </div>
                   )}
-                  
+
                   {type.value === 'text' && (
                     <div>
                       <Label htmlFor="content" className="mb-2 block">{t.sources.textContentLabel}</Label>
