@@ -43,6 +43,7 @@ import {
   Wrench,
   Command,
   Users,
+  ListTodo,
 } from 'lucide-react'
 
 const getNavigation = (t: TranslationKeys, isAdmin: boolean) => [
@@ -57,6 +58,7 @@ const getNavigation = (t: TranslationKeys, isAdmin: boolean) => [
     items: [
       { name: t.navigation.notebooks, href: '/notebooks', icon: Book },
       { name: t.navigation.askAndSearch, href: '/search', icon: Search },
+      { name: t.navigation.researchTasks, href: '/research-tasks', icon: ListTodo },
     ],
   },
   {
