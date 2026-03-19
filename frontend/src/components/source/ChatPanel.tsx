@@ -312,6 +312,9 @@ export function ChatPanel({
       const msg = axiosErr?.response?.data?.detail || axiosErr?.message || 'Deep research failed'
       setDeepResearchError(msg)
       setDeepResearchRunning(false)
+      // Reset mode so chat panel returns to normal state
+      setDeepResearchMode(false)
+      setQuickResearchMode(false)
       toast.error(msg)
     }
   }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages, onEnsureSession, quickResearchMode])
