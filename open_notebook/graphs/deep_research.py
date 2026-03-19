@@ -45,9 +45,13 @@ def update_llm_concurrency(new_limit: int):
 
 
 async def _llm_invoke(model, prompt):
-    """Semaphore-guarded LLM call. Queues automatically when over the limit."""
+    """Semaphore-guarded LLM call with timeout. Queues when over the limit."""
     async with _llm_semaphore:
-        return await model.ainvoke(prompt)
+        try:
+            return await asyncio.wait_for(model.ainvoke(prompt), timeout=600)
+        except asyncio.TimeoutError:
+            logger.error("LLM request timed out after 10 minutes")
+            raise OpenNotebookError("LLM 请求超时（10分钟），请重试")
 
 
 # ──────────────────────────────────────────────────────────────────────
