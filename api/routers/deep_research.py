@@ -28,10 +28,14 @@ async def _get_max_concurrent_tasks() -> int:
         result = await admin_repo_query(
             "SELECT deep_research_max_concurrent_tasks FROM open_notebook:content_settings"
         )
+        logger.info(f"_get_max_concurrent_tasks: raw result={result}")
         if result and result[0]:
-            return result[0].get("deep_research_max_concurrent_tasks") or 5
-    except Exception:
-        pass
+            val = result[0].get("deep_research_max_concurrent_tasks") or 5
+            logger.info(f"_get_max_concurrent_tasks: returning {val}")
+            return val
+    except Exception as e:
+        logger.error(f"_get_max_concurrent_tasks failed: {e}")
+    logger.warning("_get_max_concurrent_tasks: falling back to default 5")
     return 5
 
 
@@ -213,7 +217,9 @@ async def start_deep_research(request: DeepResearchRequest):
     running_result = await repo_query(
         "SELECT count() FROM deep_research_job WHERE status = 'running' GROUP ALL"
     )
+    logger.info(f"Deep Research limit check: raw_result={running_result}, max_tasks={max_tasks}")
     running_count = running_result[0].get("count", 0) if running_result else 0
+    logger.info(f"Deep Research limit check: running_count={running_count}, max_tasks={max_tasks}")
     if running_count >= max_tasks:
         raise HTTPException(
             status_code=429,
