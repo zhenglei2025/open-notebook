@@ -118,6 +118,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
       onRefreshMessages={() => chat.refetchCurrentSession()}
       onAddLocalMessages={(msgs) => chat.addLocalMessages(msgs as any)}
       onEnsureSession={(title) => chat.ensureSession(title)}
+      onCancelSend={chat.cancelSend}
     />
   )
 }

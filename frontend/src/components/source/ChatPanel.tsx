@@ -66,6 +66,8 @@ interface ChatPanelProps {
   onAddLocalMessages?: (messages: SourceChatMessage[]) => void
   // Callback to ensure a chat session exists, returns session ID
   onEnsureSession?: (title: string) => Promise<string | null>
+  // Callback to cancel in-flight send request
+  onCancelSend?: () => void
 }
 
 export function ChatPanel({
@@ -88,7 +90,8 @@ export function ChatPanel({
   notebookId,
   onRefreshMessages,
   onAddLocalMessages,
-  onEnsureSession
+  onEnsureSession,
+  onCancelSend
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -711,17 +714,21 @@ export function ChatPanel({
                 rows={1}
               />
               <Button
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming || deepResearchRunning}
+                onClick={isStreaming && onCancelSend ? onCancelSend : handleSend}
+                disabled={isStreaming ? !onCancelSend : (!input.trim() || deepResearchRunning)}
                 size="icon"
-                className={`h-[40px] w-[40px] flex-shrink-0 ${quickResearchMode && !isStreaming && !deepResearchRunning
-                  ? 'bg-blue-600 hover:bg-blue-700'
-                  : deepResearchMode && !isStreaming && !deepResearchRunning
-                    ? 'bg-purple-600 hover:bg-purple-700'
-                    : ''
+                className={`h-[40px] w-[40px] flex-shrink-0 ${isStreaming && onCancelSend
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : quickResearchMode && !isStreaming && !deepResearchRunning
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : deepResearchMode && !isStreaming && !deepResearchRunning
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : ''
                   }`}
               >
-                {isStreaming || deepResearchRunning ? (
+                {isStreaming && onCancelSend ? (
+                  <StopCircle className="h-4 w-4" />
+                ) : isStreaming || deepResearchRunning ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : quickResearchMode ? (
                   <Zap className="h-4 w-4" />

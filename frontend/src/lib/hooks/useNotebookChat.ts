@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
@@ -33,6 +33,8 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [charCount, setCharCount] = useState<number>(0)
   // Pending model override for when user changes model before a session exists
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null)
+  // AbortController for cancelling in-flight chat requests
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Add messages to the local state (e.g. for injecting Deep Research results before refresh)
   const addLocalMessages = useCallback((newMessages: NotebookChatMessage[]) => {
@@ -240,6 +242,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     setIsSending(true)
 
     try {
+      // Create AbortController for this request
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
       // Build context and send message
       const context = noContext ? { sources: [], notes: [] } : await buildContext()
       const response = await chatApi.sendMessage({
@@ -248,7 +254,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         context,
         model_override: modelOverride ?? (currentSession?.model_override ?? undefined),
         no_context: noContext,
-      })
+      }, controller.signal)
 
       // Update messages with API response (authoritative — includes all messages)
       setMessages(response.messages)
@@ -259,12 +265,17 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
         queryKey: QUERY_KEYS.notebookChatSession(sessionId!)
       })
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } }, message?: string };
+      // Ignore cancelled requests
+      if (err instanceof Error && err.name === 'CanceledError') {
+        return
+      }
+      const error = err as { response?: { data?: { detail?: string } }; message?: string }
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
       // Remove optimistic message on error
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
     } finally {
+      abortControllerRef.current = null
       setIsSending(false)
     }
   }, [
@@ -276,6 +287,17 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     queryClient,
     t
   ])
+
+  // Cancel in-flight send request
+  const cancelSend = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setIsSending(false)
+      // Remove optimistic message
+      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
+    }
+  }, [])
 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {
@@ -347,6 +369,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     deleteSession,
     switchSession,
     sendMessage,
+    cancelSend,
     setModelOverride,
     refetchSessions,
     refetchCurrentSession,

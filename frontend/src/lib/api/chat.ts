@@ -48,13 +48,14 @@ export const chatApi = {
   },
 
   // Messaging (synchronous, no streaming)
-  sendMessage: async (data: SendNotebookChatMessageRequest) => {
+  sendMessage: async (data: SendNotebookChatMessageRequest, signal?: AbortSignal) => {
     const response = await apiClient.post<{
       session_id: string
       messages: NotebookChatMessage[]
     }>(
       `/chat/execute`,
-      data
+      data,
+      { signal }
     )
     return response.data
   },
