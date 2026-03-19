@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from open_notebook.database.repository import repo_query, ensure_record_id, get_current_user_db, set_current_user_db
+from open_notebook.database.repository import repo_query, ensure_record_id, get_current_user_db, set_current_user_db, admin_repo_query
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.graphs.deep_research import graph as deep_research_graph
 from open_notebook.utils.error_classifier import classify_error
@@ -20,6 +20,19 @@ router = APIRouter()
 
 # Track running background tasks by job_id for cancellation
 _running_tasks: Dict[str, asyncio.Task] = {}
+
+
+async def _get_max_concurrent_tasks() -> int:
+    """Read per-user max concurrent tasks setting from admin DB."""
+    try:
+        result = await admin_repo_query(
+            "SELECT deep_research_max_concurrent_tasks FROM open_notebook:content_settings"
+        )
+        if result and result[0]:
+            return result[0].get("deep_research_max_concurrent_tasks") or 5
+    except Exception:
+        pass
+    return 5
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -194,6 +207,18 @@ async def start_deep_research(request: DeepResearchRequest):
     """Start a deep research job in the background. Returns job_id immediately."""
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    # Per-user concurrent task limit
+    max_tasks = await _get_max_concurrent_tasks()
+    running_result = await repo_query(
+        "SELECT count() FROM deep_research_job WHERE status = 'running' GROUP ALL"
+    )
+    running_count = running_result[0].get("count", 0) if running_result else 0
+    if running_count >= max_tasks:
+        raise HTTPException(
+            status_code=429,
+            detail=f"您当前已有 {running_count} 个 Deep Research 任务正在进行中（上限 {max_tasks}），请等待完成后再试",
+        )
 
     try:
         # Create job record in user's DB

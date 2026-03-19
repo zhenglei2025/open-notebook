@@ -28,6 +28,7 @@ const settingsSchema = z.object({
   deep_research_enable_context_expansion: z.enum(['yes', 'no']).optional(),
   deep_research_compile_mode: z.enum(['section', 'oneshot']).optional(),
   deep_research_max_llm_concurrent: z.number().min(1).max(200).optional(),
+  deep_research_max_concurrent_tasks: z.number().min(1).max(50).optional(),
 })
 
 type SettingsFormData = z.infer<typeof settingsSchema>
@@ -65,6 +66,7 @@ export function SettingsForm() {
       deep_research_enable_context_expansion: undefined,
       deep_research_compile_mode: undefined,
       deep_research_max_llm_concurrent: undefined,
+      deep_research_max_concurrent_tasks: undefined,
     }
   })
 
@@ -86,6 +88,7 @@ export function SettingsForm() {
         deep_research_enable_context_expansion: (settings.deep_research_enable_context_expansion !== false ? 'yes' : 'no') as 'yes' | 'no',
         deep_research_compile_mode: (settings.deep_research_compile_mode === 'oneshot' ? 'oneshot' : 'section') as 'section' | 'oneshot',
         deep_research_max_llm_concurrent: settings.deep_research_max_llm_concurrent ?? 50,
+        deep_research_max_concurrent_tasks: settings.deep_research_max_concurrent_tasks ?? 5,
       }
       reset(formData)
       setHasResetForm(true)
@@ -487,6 +490,35 @@ export function SettingsForm() {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
                   <p>{t.settings.maxLlmConcurrentHelp}</p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="max_concurrent_tasks">{t.settings.maxConcurrentTasks}</Label>
+              <Controller
+                name="deep_research_max_concurrent_tasks"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    id="max_concurrent_tasks"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={field.value ?? 5}
+                    onChange={(e) => field.onChange(parseInt(e.target.value, 10) || 5)}
+                    disabled={field.disabled || isLoading}
+                    className="w-full"
+                  />
+                )}
+              />
+              <Collapsible open={expandedSections.maxConcurrentTasks} onOpenChange={() => toggleSection('maxConcurrentTasks')}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${expandedSections.maxConcurrentTasks ? 'rotate-180' : ''}`} />
+                  {t.settings.helpMeChoose}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-sm text-muted-foreground space-y-2">
+                  <p>{t.settings.maxConcurrentTasksHelp}</p>
                 </CollapsibleContent>
               </Collapsible>
             </div>

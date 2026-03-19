@@ -785,6 +785,8 @@ export const enUS = {
     compileModeHelp: "Section-by-Section: LLM polishes each section sequentially for higher quality but slower. One-Shot: all drafts are compiled in a single LLM call for faster results.",
     maxLlmConcurrent: "Max LLM Concurrent Requests",
     maxLlmConcurrentHelp: "Limit the number of simultaneous LLM requests sent to the GPU server during Deep Research. Requests beyond this limit are automatically queued. Default: 50",
+    maxConcurrentTasks: "Max Deep Research Tasks Per User",
+    maxConcurrentTasksHelp: "Limit the number of simultaneous Deep Research tasks each user can run. New tasks will be rejected when the limit is reached. Default: 5",
   },
   advanced: {
     title: "AdvancedTools",

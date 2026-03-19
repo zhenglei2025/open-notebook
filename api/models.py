@@ -268,6 +268,7 @@ class SettingsResponse(BaseModel):
     deep_research_enable_context_expansion: Optional[bool] = None
     deep_research_compile_mode: Optional[str] = None
     deep_research_max_llm_concurrent: Optional[int] = None
+    deep_research_max_concurrent_tasks: Optional[int] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -282,6 +283,7 @@ class SettingsUpdate(BaseModel):
     deep_research_enable_context_expansion: Optional[bool] = None
     deep_research_compile_mode: Optional[str] = None
     deep_research_max_llm_concurrent: Optional[int] = None
+    deep_research_max_concurrent_tasks: Optional[int] = None
 
 
 # Sources API models

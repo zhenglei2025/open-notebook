@@ -32,3 +32,6 @@ class ContentSettings(RecordModel):
     deep_research_max_llm_concurrent: Optional[int] = Field(
         50, description="Max concurrent LLM requests for deep research"
     )
+    deep_research_max_concurrent_tasks: Optional[int] = Field(
+        5, description="Max concurrent deep research tasks per user"
+    )

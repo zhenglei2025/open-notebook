@@ -20,6 +20,7 @@ _DEFAULTS = {
     "deep_research_enable_context_expansion": True,
     "deep_research_compile_mode": "section",
     "deep_research_max_llm_concurrent": 50,
+    "deep_research_max_concurrent_tasks": 5,
 }
 
 
@@ -102,6 +103,10 @@ def _build_response(data: dict) -> SettingsResponse:
             "deep_research_max_llm_concurrent",
             _DEFAULTS["deep_research_max_llm_concurrent"],
         ),
+        deep_research_max_concurrent_tasks=data.get(
+            "deep_research_max_concurrent_tasks",
+            _DEFAULTS["deep_research_max_concurrent_tasks"],
+        ),
     )
 
 
@@ -146,6 +151,8 @@ async def update_settings(settings_update: SettingsUpdate):
             updates["deep_research_compile_mode"] = settings_update.deep_research_compile_mode
         if settings_update.deep_research_max_llm_concurrent is not None:
             updates["deep_research_max_llm_concurrent"] = settings_update.deep_research_max_llm_concurrent
+        if settings_update.deep_research_max_concurrent_tasks is not None:
+            updates["deep_research_max_concurrent_tasks"] = settings_update.deep_research_max_concurrent_tasks
 
         if not updates:
             data = await _get_admin_settings()

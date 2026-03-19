@@ -45,6 +45,9 @@ class SettingsService:
             deep_research_max_llm_concurrent=settings_data.get(
                 "deep_research_max_llm_concurrent"
             ),
+            deep_research_max_concurrent_tasks=settings_data.get(
+                "deep_research_max_concurrent_tasks"
+            ),
         )
 
         return settings
@@ -60,6 +63,7 @@ class SettingsService:
             "deep_research_max_search_rounds": settings.deep_research_max_search_rounds,
             "deep_research_enable_context_expansion": settings.deep_research_enable_context_expansion,
             "deep_research_max_llm_concurrent": settings.deep_research_max_llm_concurrent,
+            "deep_research_max_concurrent_tasks": settings.deep_research_max_concurrent_tasks,
         }
 
         settings_response = api_client.update_settings(**updates)
@@ -91,6 +95,9 @@ class SettingsService:
         )
         settings.deep_research_max_llm_concurrent = settings_data.get(
             "deep_research_max_llm_concurrent"
+        )
+        settings.deep_research_max_concurrent_tasks = settings_data.get(
+            "deep_research_max_concurrent_tasks"
         )
 
         return settings
