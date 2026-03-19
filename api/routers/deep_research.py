@@ -215,7 +215,7 @@ async def start_deep_research(request: DeepResearchRequest):
     # Per-user concurrent task limit
     max_tasks = await _get_max_concurrent_tasks()
     running_result = await repo_query(
-        "SELECT count() FROM deep_research_job WHERE status = 'running' GROUP ALL"
+        "SELECT count() FROM deep_research_job WHERE status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL"
     )
     logger.info(f"Deep Research limit check: raw_result={running_result}, max_tasks={max_tasks}")
     running_count = running_result[0].get("count", 0) if running_result else 0
