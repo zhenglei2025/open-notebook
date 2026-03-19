@@ -20,7 +20,13 @@ import {
     FileText,
     StickyNote,
     Presentation,
+    ChevronLeft,
+    ChevronRight,
+    Search,
+    BookOpen,
 } from 'lucide-react'
+
+const PAGE_SIZE = 20
 
 export default function UsersPage() {
     const { t } = useTranslation()
@@ -32,6 +38,10 @@ export default function UsersPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [deletingUser, setDeletingUser] = useState<string | null>(null)
+    const [currentPage, setCurrentPage] = useState(1)
+
+    const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE))
+    const paginatedUsers = users.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
     // Use refs to avoid infinite useEffect loops (toast/t change every render)
     const toastRef = useRef(toast)
@@ -51,6 +61,7 @@ export default function UsersPage() {
         try {
             const data = await adminApi.listUsers()
             setUsers(data)
+            setCurrentPage(1)
         } catch {
             toastRef.current({
                 title: tRef.current.admin.failedToLoad,
@@ -140,72 +151,114 @@ export default function UsersPage() {
                                 {t.admin.noUsers}
                             </div>
                         ) : (
-                            <div className="border rounded-lg divide-y">
-                                {users.map((user) => (
-                                    <div
-                                        key={user.username}
-                                        className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary/10">
-                                                {user.is_admin ? (
-                                                    <Shield className="h-4 w-4 text-primary" />
-                                                ) : (
-                                                    <UserIcon className="h-4 w-4 text-muted-foreground" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="font-medium flex items-center gap-2">
-                                                    {user.username}
-                                                    {user.is_admin && (
-                                                        <Badge variant="default" className="text-xs">
-                                                            {t.admin.adminRole}
-                                                        </Badge>
+                            <>
+                                <div className="border rounded-lg divide-y">
+                                    {paginatedUsers.map((user) => (
+                                        <div
+                                            key={user.username}
+                                            className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary/10">
+                                                    {user.is_admin ? (
+                                                        <Shield className="h-4 w-4 text-primary" />
+                                                    ) : (
+                                                        <UserIcon className="h-4 w-4 text-muted-foreground" />
                                                     )}
                                                 </div>
-                                                {user.created && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {t.admin.createdAt}: {new Date(user.created).toLocaleDateString()}
+                                                <div>
+                                                    <div className="font-medium flex items-center gap-2">
+                                                        {user.username}
+                                                        {user.is_admin && (
+                                                            <Badge variant="default" className="text-xs">
+                                                                {t.admin.adminRole}
+                                                            </Badge>
+                                                        )}
                                                     </div>
+                                                    {user.created && (
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {t.admin.createdAt}: {new Date(user.created).toLocaleDateString()}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant={user.is_admin ? 'default' : 'secondary'}>
+                                                    {user.is_admin ? t.admin.adminRole : t.admin.userRole}
+                                                </Badge>
+                                                <Badge variant="outline" className="gap-1 text-xs">
+                                                    <FileText className="h-3 w-3" />
+                                                    {user.source_count ?? 0}
+                                                </Badge>
+                                                <Badge variant="outline" className="gap-1 text-xs">
+                                                    <StickyNote className="h-3 w-3" />
+                                                    {user.note_count ?? 0}
+                                                </Badge>
+                                                <Badge variant="outline" className="gap-1 text-xs">
+                                                    <Presentation className="h-3 w-3" />
+                                                    {user.ppt_count ?? 0}
+                                                </Badge>
+                                                <Badge variant="outline" className="gap-1 text-xs">
+                                                    <Search className="h-3 w-3" />
+                                                    {user.quick_research_count ?? 0}
+                                                </Badge>
+                                                <Badge variant="outline" className="gap-1 text-xs">
+                                                    <BookOpen className="h-3 w-3" />
+                                                    {user.deep_research_count ?? 0}
+                                                </Badge>
+                                                {user.username !== 'admin' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleDelete(user.username)}
+                                                        disabled={deletingUser === user.username}
+                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    >
+                                                        {deletingUser === user.username ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
                                                 )}
                                             </div>
                                         </div>
+                                    ))}
+                                </div>
 
+                                {/* Pagination */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between mt-4 px-1">
+                                        <span className="text-sm text-muted-foreground">
+                                            {t.admin.totalUsers.replace('{count}', String(users.length))}
+                                        </span>
                                         <div className="flex items-center gap-2">
-                                            <Badge variant={user.is_admin ? 'default' : 'secondary'}>
-                                                {user.is_admin ? t.admin.adminRole : t.admin.userRole}
-                                            </Badge>
-                                            <Badge variant="outline" className="gap-1 text-xs">
-                                                <FileText className="h-3 w-3" />
-                                                {user.source_count ?? 0}
-                                            </Badge>
-                                            <Badge variant="outline" className="gap-1 text-xs">
-                                                <StickyNote className="h-3 w-3" />
-                                                {user.note_count ?? 0}
-                                            </Badge>
-                                            <Badge variant="outline" className="gap-1 text-xs">
-                                                <Presentation className="h-3 w-3" />
-                                                {user.ppt_count ?? 0}
-                                            </Badge>
-                                            {user.username !== 'admin' && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleDelete(user.username)}
-                                                    disabled={deletingUser === user.username}
-                                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                >
-                                                    {deletingUser === user.username ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="h-4 w-4" />
-                                                    )}
-                                                </Button>
-                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </Button>
+                                            <span className="text-sm min-w-[80px] text-center">
+                                                {t.admin.page
+                                                    .replace('{current}', String(currentPage))
+                                                    .replace('{total}', String(totalPages))}
+                                            </span>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                                disabled={currentPage === totalPages}
+                                            >
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>

@@ -60,8 +60,8 @@ async def list_users_endpoint(request: Request):
     if user_id != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    users = await list_users()
-    return {"users": users}
+    users, running_stats = await list_users()
+    return {"users": users, "running_stats": running_stats}
 
 
 @router.delete("/users/{username}")

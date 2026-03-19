@@ -998,6 +998,8 @@ export const zhCN = {
     creating: "创建中...",
     cannotDeleteAdmin: "无法删除管理员用户",
     userAlreadyExists: "用户 \"{name}\" 已存在",
+    totalUsers: "共 {count} 个用户",
+    page: "第 {current} / {total} 页",
   },
   setupBanner: {
     encryptionRequired: "未配置加密密钥",

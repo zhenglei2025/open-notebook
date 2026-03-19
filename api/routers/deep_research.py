@@ -244,6 +244,7 @@ async def start_deep_research(request: DeepResearchRequest):
                 notebook_id = $notebook_id,
                 session_id = $session_id,
                 model_id = $model_id,
+                research_type = $research_type,
                 status = 'running',
                 events = [],
                 final_report = NONE,
@@ -256,6 +257,7 @@ async def start_deep_research(request: DeepResearchRequest):
                 "notebook_id": request.notebook_id,
                 "session_id": request.session_id,
                 "model_id": request.model_id,
+                "research_type": request.research_type,
             },
         )
 

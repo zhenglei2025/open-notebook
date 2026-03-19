@@ -999,6 +999,8 @@ export const enUS = {
     creating: "Creating...",
     cannotDeleteAdmin: "Cannot delete admin user",
     userAlreadyExists: "User \"{name}\" already exists",
+    totalUsers: "{count} users total",
+    page: "Page {current} / {total}",
   },
   setupBanner: {
     encryptionRequired: "Encryption key not configured",

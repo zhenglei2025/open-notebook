@@ -285,14 +285,32 @@ async def list_users() -> List[Dict[str, Any]]:
                 elif isinstance(r, dict):
                     users.append(r)
 
-    # Query each user's database for source/note counts
+    # Query each user's database for stats using a single combined query
     namespace = os.environ.get("SURREAL_NAMESPACE", "open_notebook")
+
+    def extract_count(result):
+        if not result:
+            return 0
+        if isinstance(result, list):
+            for item in result:
+                if isinstance(item, list) and len(item) > 0:
+                    return item[0].get("count", 0)
+                elif isinstance(item, dict):
+                    return item.get("count", 0)
+        return 0
+
+    # Accumulate global running task counts across all users
+    total_running_quick = 0
+    total_running_deep = 0
+
     for user in users:
         db_name = user.get("db_name")
         if not db_name:
             user["source_count"] = 0
             user["note_count"] = 0
             user["ppt_count"] = 0
+            user["quick_research_count"] = 0
+            user["deep_research_count"] = 0
             continue
         try:
             user_db = AsyncSurreal(get_database_url())
@@ -304,41 +322,49 @@ async def list_users() -> List[Dict[str, Any]]:
             )
             await user_db.use(namespace, db_name)
 
-            # Query source count
-            source_result = parse_record_ids(
-                await user_db.query("SELECT count() FROM source GROUP ALL")
-            )
-            # Query note count
-            note_result = parse_record_ids(
-                await user_db.query("SELECT count() FROM note GROUP ALL")
-            )
-            # Query PPT count
-            ppt_result = parse_record_ids(
-                await user_db.query("SELECT count() FROM note_ppt GROUP ALL")
+            # Single combined query for all stats (reduces DB round-trips)
+            combined = parse_record_ids(
+                await user_db.query(
+                    """
+                    SELECT count() FROM source GROUP ALL;
+                    SELECT count() FROM note GROUP ALL;
+                    SELECT count() FROM note_ppt GROUP ALL;
+                    SELECT count() FROM deep_research_job WHERE research_type = 'quick' AND status IN ['completed', 'saved_to_chat'] GROUP ALL;
+                    SELECT count() FROM deep_research_job WHERE research_type = 'deep' AND status IN ['completed', 'saved_to_chat'] GROUP ALL;
+                    SELECT count() FROM deep_research_job WHERE research_type = 'quick' AND status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL;
+                    SELECT count() FROM deep_research_job WHERE research_type = 'deep' AND status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL;
+                    """
+                )
             )
             await user_db.close()
 
-            def extract_count(result):
-                if not result:
-                    return 0
-                if isinstance(result, list):
-                    for item in result:
-                        if isinstance(item, list) and len(item) > 0:
-                            return item[0].get("count", 0)
-                        elif isinstance(item, dict):
-                            return item.get("count", 0)
-                return 0
-
-            user["source_count"] = extract_count(source_result)
-            user["note_count"] = extract_count(note_result)
-            user["ppt_count"] = extract_count(ppt_result)
+            # combined is a list of 7 results, one per statement
+            if isinstance(combined, list) and len(combined) >= 7:
+                user["source_count"] = extract_count(combined[0])
+                user["note_count"] = extract_count(combined[1])
+                user["ppt_count"] = extract_count(combined[2])
+                user["quick_research_count"] = extract_count(combined[3])
+                user["deep_research_count"] = extract_count(combined[4])
+                total_running_quick += extract_count(combined[5])
+                total_running_deep += extract_count(combined[6])
+            else:
+                user["source_count"] = extract_count(combined)
+                user["note_count"] = 0
+                user["ppt_count"] = 0
+                user["quick_research_count"] = 0
+                user["deep_research_count"] = 0
         except Exception as e:
             logger.warning(f"Failed to get stats for user '{user.get('username')}': {e}")
             user["source_count"] = 0
             user["note_count"] = 0
             user["ppt_count"] = 0
+            user["quick_research_count"] = 0
+            user["deep_research_count"] = 0
 
-    return users
+    return users, {
+        "running_quick_research": total_running_quick,
+        "running_deep_research": total_running_deep,
+    }
 
 
 async def delete_user(username: str) -> bool:

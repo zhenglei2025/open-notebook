@@ -8,6 +8,8 @@ export interface User {
   source_count?: number
   note_count?: number
   ppt_count?: number
+  quick_research_count?: number
+  deep_research_count?: number
 }
 
 export interface CreateUserRequest {
