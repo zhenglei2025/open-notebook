@@ -782,6 +782,8 @@ export const zhCN = {
     compileModeSection: "分段汇编",
     compileModeOneshot: "一次汇编",
     compileModeHelp: "分段汇编：逐章节调用 LLM 润色汇编，质量更高但速度较慢。一次汇编：将所有章节一次性传给 LLM 汇编，速度更快。",
+    maxLlmConcurrent: "最大 LLM 并发请求数",
+    maxLlmConcurrentHelp: "限制 Deep Research 同时发送到 GPU 服务器的 LLM 请求数量。超过此数量的请求会自动排队等待。默认：50",
   },
   advanced: {
     title: "高级工具",

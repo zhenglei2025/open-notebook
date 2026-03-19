@@ -42,6 +42,9 @@ class SettingsService:
             deep_research_enable_context_expansion=settings_data.get(
                 "deep_research_enable_context_expansion"
             ),
+            deep_research_max_llm_concurrent=settings_data.get(
+                "deep_research_max_llm_concurrent"
+            ),
         )
 
         return settings
@@ -56,6 +59,7 @@ class SettingsService:
             "youtube_preferred_languages": settings.youtube_preferred_languages,
             "deep_research_max_search_rounds": settings.deep_research_max_search_rounds,
             "deep_research_enable_context_expansion": settings.deep_research_enable_context_expansion,
+            "deep_research_max_llm_concurrent": settings.deep_research_max_llm_concurrent,
         }
 
         settings_response = api_client.update_settings(**updates)
@@ -84,6 +88,9 @@ class SettingsService:
         )
         settings.deep_research_enable_context_expansion = settings_data.get(
             "deep_research_enable_context_expansion"
+        )
+        settings.deep_research_max_llm_concurrent = settings_data.get(
+            "deep_research_max_llm_concurrent"
         )
 
         return settings

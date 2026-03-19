@@ -783,6 +783,8 @@ export const enUS = {
     compileModeSection: "Section-by-Section",
     compileModeOneshot: "One-Shot",
     compileModeHelp: "Section-by-Section: LLM polishes each section sequentially for higher quality but slower. One-Shot: all drafts are compiled in a single LLM call for faster results.",
+    maxLlmConcurrent: "Max LLM Concurrent Requests",
+    maxLlmConcurrentHelp: "Limit the number of simultaneous LLM requests sent to the GPU server during Deep Research. Requests beyond this limit are automatically queued. Default: 50",
   },
   advanced: {
     title: "AdvancedTools",

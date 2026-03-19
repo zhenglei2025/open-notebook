@@ -29,3 +29,6 @@ class ContentSettings(RecordModel):
     deep_research_enable_context_expansion: Optional[bool] = Field(
         True, description="Whether to enable full-text context expansion in deep research"
     )
+    deep_research_max_llm_concurrent: Optional[int] = Field(
+        50, description="Max concurrent LLM requests for deep research"
+    )

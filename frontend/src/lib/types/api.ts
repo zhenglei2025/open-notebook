@@ -63,6 +63,7 @@ export interface SettingsResponse {
   deep_research_max_search_rounds?: number
   deep_research_enable_context_expansion?: boolean
   deep_research_compile_mode?: string
+  deep_research_max_llm_concurrent?: number
 }
 
 export interface NotePptTask {

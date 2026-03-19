@@ -3,6 +3,7 @@ from loguru import logger
 
 from api.models import SettingsResponse, SettingsUpdate
 from open_notebook.database.repository import admin_repo_query
+from open_notebook.graphs.deep_research import update_llm_concurrency
 
 router = APIRouter()
 
@@ -18,6 +19,7 @@ _DEFAULTS = {
     "deep_research_max_search_rounds": 3,
     "deep_research_enable_context_expansion": True,
     "deep_research_compile_mode": "section",
+    "deep_research_max_llm_concurrent": 50,
 }
 
 
@@ -96,6 +98,10 @@ def _build_response(data: dict) -> SettingsResponse:
             "deep_research_compile_mode",
             _DEFAULTS["deep_research_compile_mode"],
         ),
+        deep_research_max_llm_concurrent=data.get(
+            "deep_research_max_llm_concurrent",
+            _DEFAULTS["deep_research_max_llm_concurrent"],
+        ),
     )
 
 
@@ -138,12 +144,17 @@ async def update_settings(settings_update: SettingsUpdate):
             updates["deep_research_enable_context_expansion"] = settings_update.deep_research_enable_context_expansion
         if settings_update.deep_research_compile_mode is not None:
             updates["deep_research_compile_mode"] = settings_update.deep_research_compile_mode
+        if settings_update.deep_research_max_llm_concurrent is not None:
+            updates["deep_research_max_llm_concurrent"] = settings_update.deep_research_max_llm_concurrent
 
         if not updates:
             data = await _get_admin_settings()
             return _build_response(data)
 
         data = await _update_admin_settings(updates)
+        # Hot-update LLM concurrency if changed
+        if "deep_research_max_llm_concurrent" in updates:
+            update_llm_concurrency(updates["deep_research_max_llm_concurrent"])
         return _build_response(data)
     except HTTPException:
         raise

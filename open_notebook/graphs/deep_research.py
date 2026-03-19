@@ -28,6 +28,29 @@ from open_notebook.utils.error_classifier import classify_error
 from open_notebook.utils.text_utils import extract_text_content
 
 # ──────────────────────────────────────────────────────────────────────
+# LLM Concurrency Limiter
+# ──────────────────────────────────────────────────────────────────────
+
+_llm_semaphore = asyncio.Semaphore(50)
+_llm_semaphore_limit = 50
+
+
+def update_llm_concurrency(new_limit: int):
+    """Hot-update the LLM concurrency limit. New requests use the new semaphore."""
+    global _llm_semaphore, _llm_semaphore_limit
+    if new_limit != _llm_semaphore_limit and new_limit > 0:
+        _llm_semaphore = asyncio.Semaphore(new_limit)
+        _llm_semaphore_limit = new_limit
+        logger.info(f"LLM concurrency limit updated to {new_limit}")
+
+
+async def _llm_invoke(model, prompt):
+    """Semaphore-guarded LLM call. Queues automatically when over the limit."""
+    async with _llm_semaphore:
+        return await model.ainvoke(prompt)
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Pydantic models for structured LLM output
 # ──────────────────────────────────────────────────────────────────────
 
@@ -108,7 +131,8 @@ async def _get_deep_research_settings() -> dict:
     """Read deep research settings from admin DB (shared across all users)."""
     try:
         result = await admin_repo_query(
-            "SELECT deep_research_max_search_rounds, deep_research_enable_context_expansion "
+            "SELECT deep_research_max_search_rounds, deep_research_enable_context_expansion, "
+            "deep_research_max_llm_concurrent "
             "FROM open_notebook:content_settings"
         )
         if result and result[0]:
@@ -353,7 +377,7 @@ async def _extract_from_chunk(
         }
     )
     model = await _provision_model(prompt, config, max_tokens=1024)
-    ai_message = await model.ainvoke(prompt)
+    ai_message = await _llm_invoke(model, prompt)
     content = extract_text_content(ai_message.content)
     return clean_thinking_content(content).strip()
 
@@ -383,7 +407,7 @@ async def _extract_from_single_source(
             }
         )
         model = await _provision_model(prompt, config, max_tokens=1024)
-        ai_message = await model.ainvoke(prompt)
+        ai_message = await _llm_invoke(model, prompt)
         content = extract_text_content(ai_message.content)
         extracted = clean_thinking_content(content).strip()
     else:
@@ -435,7 +459,7 @@ async def _extract_from_single_source(
             }
         )
         model = await _provision_model(consolidation_prompt, config, max_tokens=1024)
-        ai_message = await model.ainvoke(consolidation_prompt)
+        ai_message = await _llm_invoke(model, consolidation_prompt)
         content = extract_text_content(ai_message.content)
         extracted = clean_thinking_content(content).strip()
 
@@ -499,7 +523,7 @@ async def _expand_context(
     )
 
     model = await _provision_model(prompt, config, max_tokens=1024, structured=dict(type="json"))
-    ai_message = await model.ainvoke(prompt)
+    ai_message = await _llm_invoke(model, prompt)
     content = extract_text_content(ai_message.content)
     cleaned = clean_thinking_content(content)
     expansion_result = parser.parse(cleaned)
@@ -595,7 +619,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
             rewrite_model = await _provision_model(
                 rewrite_prompt, config, max_tokens=512, structured=dict(type="json")
             )
-            rewrite_msg = await rewrite_model.ainvoke(rewrite_prompt)
+            rewrite_msg = await _llm_invoke(rewrite_model, rewrite_prompt)
             rewrite_content = clean_thinking_content(
                 extract_text_content(rewrite_msg.content)
             )
@@ -642,7 +666,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
         )
 
         model = await _provision_model(prompt, config, max_tokens=4096, structured=dict(type="json"))
-        ai_message = await model.ainvoke(prompt)
+        ai_message = await _llm_invoke(model, prompt)
 
         content = extract_text_content(ai_message.content)
         cleaned = clean_thinking_content(content)
@@ -708,6 +732,9 @@ async def _process_single_section(
     # ── Search + Evaluate loop ──
     is_quick = state.get("research_type") == "quick"
     dr_settings = await _get_deep_research_settings()
+    # Sync LLM concurrency limit from settings
+    concurrency = dr_settings.get("deep_research_max_llm_concurrent") or 50
+    update_llm_concurrency(concurrency)
     configured_max = dr_settings.get("deep_research_max_search_rounds") or MAX_SEARCH_ROUNDS
     max_rounds = 1 if is_quick else configured_max
     all_results: List[Dict[str, Any]] = []
@@ -789,7 +816,7 @@ async def _process_single_section(
         )
 
         model = await _provision_model(prompt, config, max_tokens=2048, structured=dict(type="json"))
-        ai_message = await model.ainvoke(prompt)
+        ai_message = await _llm_invoke(model, prompt)
         content = extract_text_content(ai_message.content)
         cleaned = clean_thinking_content(content)
         evaluation = parser.parse(cleaned)
@@ -865,7 +892,7 @@ async def _process_single_section(
     )
 
     model = await _provision_model(write_prompt, config, max_tokens=8192)
-    ai_message = await model.ainvoke(write_prompt)
+    ai_message = await _llm_invoke(model, write_prompt)
     content = extract_text_content(ai_message.content)
     draft = clean_thinking_content(content)
 
@@ -897,7 +924,7 @@ async def _process_single_section(
         )
 
         model = await _provision_model(summarize_prompt, config, max_tokens=512)
-        ai_message = await model.ainvoke(summarize_prompt)
+        ai_message = await _llm_invoke(model, summarize_prompt)
         content = extract_text_content(ai_message.content)
         summary = clean_thinking_content(content).strip()
 
@@ -1036,7 +1063,7 @@ async def compile_report(state: DeepResearchState, config: RunnableConfig) -> di
                 )
 
                 model = await _provision_model(prompt, config, max_tokens=8192)
-                ai_message = await model.ainvoke(prompt)
+                ai_message = await _llm_invoke(model, prompt)
 
                 content = extract_text_content(ai_message.content)
                 compiled_section = clean_thinking_content(content)
