@@ -303,8 +303,10 @@ export function ChatPanel({
       const job = await startDeepResearch(question, notebookId, modelOverride, sessionId || undefined, researchType)
       setDeepResearchJobId(job.job_id)
       startPolling(job.job_id)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Deep research failed'
+    } catch (e: unknown) {
+      // Extract detail from API response (e.g. 429 rate limit message)
+      const axiosErr = e as { response?: { data?: { detail?: string } }; message?: string }
+      const msg = axiosErr?.response?.data?.detail || axiosErr?.message || 'Deep research failed'
       setDeepResearchError(msg)
       setDeepResearchRunning(false)
       toast.error(msg)
