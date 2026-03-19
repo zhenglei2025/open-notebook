@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { AppShell } from '@/components/layout/AppShell'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
@@ -14,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
+import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion, ListTodo, StopCircle } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -23,6 +25,8 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
+import apiClient from '@/lib/api/client'
+import { cancelDeepResearch } from '@/lib/api/deep-research'
 
 export default function SearchPage() {
   const { t } = useTranslation()
@@ -33,7 +37,7 @@ export default function SearchPage() {
   const urlMode = rawMode === 'search' ? 'search' : 'ask'
 
   // Tab state (controlled)
-  const [activeTab, setActiveTab] = useState<'ask' | 'search'>(
+  const [activeTab, setActiveTab] = useState<'ask' | 'search' | 'tasks'>(
     urlMode === 'search' ? 'search' : 'ask'
   )
 
@@ -63,6 +67,36 @@ export default function SearchPage() {
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
   const { openModal } = useModalManager()
+  const queryClient = useQueryClient()
+
+  // Task manager: fetch running jobs
+  interface RunningJob {
+    job_id: string
+    question: string
+    status: string
+    notebook_name: string | null
+    notebook_id: string | null
+    created: string | null
+  }
+  const { data: runningJobs = [], isLoading: jobsLoading } = useQuery<RunningJob[]>({
+    queryKey: ['deep-research-jobs'],
+    queryFn: async () => {
+      const res = await apiClient.get<RunningJob[]>('/deep-research/jobs')
+      return res.data
+    },
+    refetchInterval: activeTab === 'tasks' ? 5000 : false,
+  })
+
+  const cancelJobMutation = useMutation({
+    mutationFn: (jobId: string) => cancelDeepResearch(jobId),
+    onSuccess: () => {
+      toast.success(t.searchPage.taskCancelled)
+      queryClient.invalidateQueries({ queryKey: ['deep-research-jobs'] })
+    },
+    onError: () => {
+      toast.error('Failed to cancel task')
+    },
+  })
 
   const modelNameById = useMemo(() => {
     if (!availableModels) {
@@ -161,7 +195,7 @@ export default function SearchPage() {
       <div className="p-4 md:p-6">
         <h1 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">{t.searchPage.askAndSearch}</h1>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full space-y-6">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search' | 'tasks')} className="w-full space-y-6">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.searchPage.chooseAMode}</p>
             <TabsList aria-label={t.common.accessibility.searchKB} className="w-full max-w-xl">
@@ -172,6 +206,15 @@ export default function SearchPage() {
               <TabsTrigger value="search">
                 <Search className="h-4 w-4" />
                 {t.searchPage.search}
+              </TabsTrigger>
+              <TabsTrigger value="tasks">
+                <ListTodo className="h-4 w-4" />
+                {t.searchPage.tasks}
+                {runningJobs.length > 0 && (
+                  <Badge variant="destructive" className="ml-1.5 h-5 min-w-5 px-1.5 text-[10px]">
+                    {runningJobs.length}
+                  </Badge>
+                )}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -452,42 +495,109 @@ export default function SearchPage() {
                           const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
 
                           return (
-                          <Card key={index}>
-                            <CardContent className="pt-4">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <button
-                                    onClick={() => openModal(modalType, id)}
-                                    className="text-primary hover:underline font-medium"
-                                  >
-                                    {result.title}
-                                  </button>
-                                  <Badge variant="secondary" className="ml-2">
-                                    {result.final_score.toFixed(2)}
-                                  </Badge>
+                            <Card key={index}>
+                              <CardContent className="pt-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex-1">
+                                    <button
+                                      onClick={() => openModal(modalType, id)}
+                                      className="text-primary hover:underline font-medium"
+                                    >
+                                      {result.title}
+                                    </button>
+                                    <Badge variant="secondary" className="ml-2">
+                                      {result.final_score.toFixed(2)}
+                                    </Badge>
+                                  </div>
                                 </div>
-                              </div>
 
-                              {result.matches && result.matches.length > 0 && (
-                                <Collapsible className="mt-3">
-                                  <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                                    <ChevronDown className="h-4 w-4" />
-                                    {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent className="mt-2 space-y-1">
-                                    {result.matches.map((match, i) => (
-                                      <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
-                                        {match}
-                                      </div>
-                                    ))}
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )})}
+                                {result.matches && result.matches.length > 0 && (
+                                  <Collapsible className="mt-3">
+                                    <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                                      <ChevronDown className="h-4 w-4" />
+                                      {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="mt-2 space-y-1">
+                                      {result.matches.map((match, i) => (
+                                        <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
+                                          {match}
+                                        </div>
+                                      ))}
+                                    </CollapsibleContent>
+                                  </Collapsible>
+                                )}
+                              </CardContent>
+                            </Card>
+                          )
+                        })}
                       </div>
                     )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tasks" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{t.searchPage.runningTasks}</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {t.searchPage.runningTasksDesc}
+                </p>
+              </CardHeader>
+              <CardContent>
+                {jobsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <LoadingSpinner size="lg" />
+                  </div>
+                ) : runningJobs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <ListTodo className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                    <p>{t.searchPage.noRunningTasks}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {runningJobs.map((job) => (
+                      <Card key={job.job_id} className="border">
+                        <CardContent className="pt-4 pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate" title={job.question}>
+                                {job.question}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                <Badge variant="secondary" className="text-xs">
+                                  {job.notebook_name || t.searchPage.unknownNotebook}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  {job.status}
+                                </Badge>
+                                {job.created && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(job.created).toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm(t.searchPage.cancelTaskConfirm)) {
+                                  cancelJobMutation.mutate(job.job_id)
+                                }
+                              }}
+                              disabled={cancelJobMutation.isPending}
+                              className="flex-shrink-0"
+                            >
+                              <StopCircle className="h-3.5 w-3.5 mr-1" />
+                              {t.searchPage.cancelTask}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 )}
               </CardContent>

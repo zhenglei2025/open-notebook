@@ -67,6 +67,15 @@ class DeepResearchStatusResponse(BaseModel):
     error: Optional[str] = None
 
 
+class DeepResearchJobListItem(BaseModel):
+    job_id: str
+    question: str
+    status: str
+    notebook_name: Optional[str] = None
+    notebook_id: Optional[str] = None
+    created: Optional[str] = None
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Background execution
 # ──────────────────────────────────────────────────────────────────────
@@ -277,6 +286,56 @@ async def start_deep_research(request: DeepResearchRequest):
     except Exception as e:
         logger.error(f"Failed to start deep research: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start research: {str(e)}")
+
+
+@router.get("/deep-research/jobs", response_model=List[DeepResearchJobListItem])
+async def list_deep_research_jobs():
+    """List all in-progress deep research jobs for the current user."""
+    try:
+        jobs = await repo_query(
+            """
+            SELECT
+                id,
+                question,
+                status,
+                notebook_id,
+                created
+            FROM deep_research_job
+            WHERE status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat']
+            ORDER BY created DESC
+            """
+        )
+
+        result = []
+        for job in jobs:
+            # Resolve notebook name
+            notebook_name = None
+            nb_id = job.get("notebook_id")
+            if nb_id:
+                try:
+                    nb_result = await repo_query(
+                        "SELECT name FROM $nb_id",
+                        {"nb_id": ensure_record_id(nb_id)},
+                    )
+                    if nb_result and nb_result[0]:
+                        notebook_name = nb_result[0].get("name")
+                except Exception:
+                    pass
+
+            result.append(DeepResearchJobListItem(
+                job_id=str(job["id"]),
+                question=job.get("question", ""),
+                status=job.get("status", "unknown"),
+                notebook_name=notebook_name,
+                notebook_id=nb_id,
+                created=str(job["created"]) if job.get("created") else None,
+            ))
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to list deep research jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
 
 
 @router.post("/deep-research/{job_id}/cancel")
