@@ -33,6 +33,17 @@ A preliminary search for the user's question found the following relevant conten
 {% endfor %}
 {% endif %}
 
+{% if expanded_context %}
+# EXPANDED FULL-TEXT CONTEXT
+
+The following are key extracts from source documents identified as needing deeper reading. Use these to make more informed outline decisions:
+
+{% for ec in expanded_context %}
+## {{ec.title}}
+{{ec.content}}
+{% endfor %}
+{% endif %}
+
 # OUTPUT FORMAT
 
 {{format_instructions}}

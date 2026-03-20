@@ -56,6 +56,12 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
     let compilingSection = ''
     let compiledCount = 0
     let compileTotalSections = 0
+    // Outline stage progress
+    let outlineSearchCount = 0
+    let outlineResultCount = 0
+    let outlineExpandedCount = 0
+    let isOutlinePlanning = false
+    let outlineSearchDone = false
 
     for (const event of events) {
         switch (event.type) {
@@ -109,6 +115,17 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 compilingSection = event.section || ''
                 compiledCount = event.compiled_count || 0
                 compileTotalSections = event.total_sections || 0
+                break
+            case 'outline_search_done':
+                outlineSearchDone = true
+                outlineSearchCount = event.outline_search_count || 0
+                outlineResultCount = event.outline_result_count || 0
+                break
+            case 'outline_context_expanded':
+                outlineExpandedCount = event.outline_expanded_count || 0
+                break
+            case 'outline_planning':
+                isOutlinePlanning = true
                 break
         }
     }
@@ -173,6 +190,34 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 </p>
             )}
 
+            {/* Outline stage progress (before outline is ready) */}
+            {sections.length === 0 && isRunning && (outlineSearchDone || isOutlinePlanning) && (
+                <div className="space-y-1.5 ml-2 border-l-2 border-muted pl-3 py-1">
+                    {outlineSearchDone && (
+                        <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                <Search className="h-2.5 w-2.5 mr-0.5" />
+                                搜索 ×{outlineSearchCount}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                {outlineResultCount} 条结果
+                            </Badge>
+                            {outlineExpandedCount > 0 && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {outlineExpandedCount} 篇查看全文
+                                </Badge>
+                            )}
+                        </div>
+                    )}
+                    {isOutlinePlanning && (
+                        <div className="flex items-center gap-1.5 text-xs text-primary">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            正在规划大纲...
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Outline */}
             {sections.length > 0 && (
                 <div className="space-y-1.5">
@@ -180,6 +225,22 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                         <CheckCircle2 className="h-3 w-3" />
                         大纲已制定 ({sections.length} 个章节)
                     </div>
+                    {outlineSearchDone && (
+                        <div className="ml-5 flex flex-wrap gap-1.5">
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                <Search className="h-2.5 w-2.5 mr-0.5" />
+                                搜索 ×{outlineSearchCount}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                {outlineResultCount} 条结果
+                            </Badge>
+                            {outlineExpandedCount > 0 && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                    {outlineExpandedCount} 篇查看全文
+                                </Badge>
+                            )}
+                        </div>
+                    )}
                     {outlineReasoning && (
                         <p className="text-xs text-muted-foreground ml-5">{outlineReasoning}</p>
                     )}

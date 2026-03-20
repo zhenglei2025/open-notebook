@@ -639,7 +639,7 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
             ]
             search_results_list = await asyncio.gather(*search_tasks, return_exceptions=True)
 
-            # Deduplicate by chunk ID, take first 200 chars
+            # Deduplicate by chunk ID, keep full fields for context expansion
             seen_ids = set()
             for i, results in enumerate(search_results_list):
                 if isinstance(results, Exception):
@@ -649,23 +649,74 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
                     rid = r.get("id", "")
                     if rid not in seen_ids:
                         seen_ids.add(rid)
-                        preliminary_results.append({
-                            "title": r.get("title", ""),
-                            "content": str(r.get("content", ""))[:200],
-                            "similarity": r.get("similarity"),
-                        })
+                        preliminary_results.append(r)  # Keep full fields
             logger.info(
                 f"Deep Research: preliminary search found "
                 f"{len(preliminary_results)} unique results from {len(all_queries)} queries"
             )
 
+            # Emit outline search progress event
+            running_events = _emit_event(state, "outline_search_done", {
+                "outline_search_count": len(all_queries),
+                "outline_result_count": len(preliminary_results),
+            })
+            await _update_job(state, {"status": "搜索完成", "events": running_events})
+
+        # ── Step 3.5: Context Expansion for outline (max 3 sources) ──
+        expanded_context = []
+        if not preliminary_results:
+            # No search results — initialise running_events from empty state
+            running_events = state.get("events", [])
+
+        if preliminary_results:
+            dr_settings = await _get_deep_research_settings()
+            enable_expansion = dr_settings.get("deep_research_enable_context_expansion", True)
+            if enable_expansion:
+                try:
+                    # Build a virtual section for context expansion
+                    virtual_section = {
+                        "title": question,
+                        "description": "Overall research question — identify key sources that need full-text reading for comprehensive outline planning",
+                    }
+                    expanded = await _expand_context(virtual_section, preliminary_results, config)
+                    if expanded:
+                        expanded_context = expanded[:2]  # Limit to 2 sources
+                        logger.info(
+                            f"Deep Research outline: context expansion got "
+                            f"{len(expanded_context)} full-text extracts"
+                        )
+                        # Emit context expansion progress event
+                        running_events = running_events + [{
+                            "type": "outline_context_expanded",
+                            "outline_expanded_count": len(expanded_context),
+                        }]
+                        await _update_job(state, {"status": "查看全文完成", "events": running_events})
+                except Exception as e:
+                    logger.warning(f"Deep Research outline: context expansion failed: {e}")
+                    # Non-fatal: proceed without expanded context
+
+        # Build preview list (200-char truncated) for prompt
+        preliminary_previews = [
+            {
+                "title": r.get("title", ""),
+                "content": str(r.get("content", ""))[:200],
+                "similarity": r.get("similarity"),
+            }
+            for r in preliminary_results
+        ]
+
         # ── Step 4: LLM plans outline using all gathered context ──
+        # Emit planning event
+        running_events = running_events + [{"type": "outline_planning"}]
+        await _update_job(state, {"status": "正在规划大纲", "events": running_events})
+
         parser = PydanticOutputParser(pydantic_object=Outline)
         prompt = Prompter(prompt_template="deep_research/outline", parser=parser).render(
             data={
                 "question": question,
                 "source_previews": source_previews,
-                "preliminary_results": preliminary_results,
+                "preliminary_results": preliminary_previews,
+                "expanded_context": expanded_context,
             }
         )
 
@@ -688,10 +739,11 @@ async def plan_outline(state: DeepResearchState, config: RunnableConfig) -> dict
             "current_queries": sections[0]["search_queries"] if sections else [],
             "is_material_sufficient": False,
             "status": f"Outlined {len(sections)} sections",
-            "events": _emit_event(state, "outline", {
+            "events": running_events + [{
+                "type": "outline",
                 "sections": [{"title": s["title"], "description": s["description"]} for s in sections],
                 "reasoning": outline.reasoning,
-            }),
+            }],
         }
         await _update_job(state, {"status": result["status"], "events": result["events"]})
         return result

@@ -6,10 +6,15 @@
 import apiClient from './client'
 
 export interface DeepResearchEvent {
-    type: 'outline' | 'search_done' | 'evaluate' | 'context_expanded' | 'write_done' | 'summarize_done' | 'compiling' | 'compile_section_done' | 'complete' | 'report' | 'error' | 'done'
+    type: 'outline' | 'outline_search_done' | 'outline_context_expanded' | 'outline_planning' | 'search_done' | 'evaluate' | 'context_expanded' | 'write_done' | 'summarize_done' | 'compiling' | 'compile_section_done' | 'complete' | 'report' | 'error' | 'done'
     // outline
     sections?: { title: string; description: string }[]
     reasoning?: string
+    // outline_search_done
+    outline_search_count?: number
+    outline_result_count?: number
+    // outline_context_expanded
+    outline_expanded_count?: number
     // search_done
     section?: string
     section_index?: number
