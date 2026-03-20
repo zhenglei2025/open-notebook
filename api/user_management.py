@@ -300,8 +300,7 @@ async def list_users() -> List[Dict[str, Any]]:
         return 0
 
     # Accumulate global running task counts across all users
-    total_running_quick = 0
-    total_running_deep = 0
+    total_running = 0
 
     for user in users:
         db_name = user.get("db_name")
@@ -322,37 +321,35 @@ async def list_users() -> List[Dict[str, Any]]:
             )
             await user_db.use(namespace, db_name)
 
-            # Single combined query for all stats (reduces DB round-trips)
-            combined = parse_record_ids(
-                await user_db.query(
-                    """
-                    SELECT count() FROM source GROUP ALL;
-                    SELECT count() FROM note GROUP ALL;
-                    SELECT count() FROM note_ppt GROUP ALL;
-                    SELECT count() FROM deep_research_job WHERE research_type = 'quick' AND status IN ['completed', 'saved_to_chat'] GROUP ALL;
-                    SELECT count() FROM deep_research_job WHERE research_type = 'deep' AND status IN ['completed', 'saved_to_chat'] GROUP ALL;
-                    SELECT count() FROM deep_research_job WHERE research_type = 'quick' AND status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL;
-                    SELECT count() FROM deep_research_job WHERE research_type = 'deep' AND status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL;
-                    """
-                )
+            # Individual queries for each stat
+            source_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM source GROUP ALL")
+            )
+            note_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM note GROUP ALL")
+            )
+            ppt_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM note_ppt GROUP ALL")
+            )
+            quick_research_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM deep_research_job WHERE research_type = 'quick' AND status IN ['completed', 'saved_to_chat'] GROUP ALL")
+            )
+            deep_research_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM deep_research_job WHERE research_type = 'deep' AND status IN ['completed', 'saved_to_chat'] GROUP ALL")
+            )
+            running_result = parse_record_ids(
+                await user_db.query("SELECT count() FROM deep_research_job WHERE status NOT IN ['completed', 'failed', 'cancelled', 'saved_to_chat'] GROUP ALL")
             )
             await user_db.close()
 
-            # combined is a list of 7 results, one per statement
-            if isinstance(combined, list) and len(combined) >= 7:
-                user["source_count"] = extract_count(combined[0])
-                user["note_count"] = extract_count(combined[1])
-                user["ppt_count"] = extract_count(combined[2])
-                user["quick_research_count"] = extract_count(combined[3])
-                user["deep_research_count"] = extract_count(combined[4])
-                total_running_quick += extract_count(combined[5])
-                total_running_deep += extract_count(combined[6])
-            else:
-                user["source_count"] = extract_count(combined)
-                user["note_count"] = 0
-                user["ppt_count"] = 0
-                user["quick_research_count"] = 0
-                user["deep_research_count"] = 0
+            user["source_count"] = extract_count(source_result)
+            user["note_count"] = extract_count(note_result)
+            user["ppt_count"] = extract_count(ppt_result)
+            user["quick_research_count"] = extract_count(quick_research_result)
+            user["deep_research_count"] = extract_count(deep_research_result)
+            user_running = extract_count(running_result)
+            total_running += user_running
+            logger.info(f"User '{user.get('username')}' running research: {user_running}, raw: {running_result}")
         except Exception as e:
             logger.warning(f"Failed to get stats for user '{user.get('username')}': {e}")
             user["source_count"] = 0
@@ -362,8 +359,7 @@ async def list_users() -> List[Dict[str, Any]]:
             user["deep_research_count"] = 0
 
     return users, {
-        "running_quick_research": total_running_quick,
-        "running_deep_research": total_running_deep,
+        "running_research": total_running,
     }
 
 

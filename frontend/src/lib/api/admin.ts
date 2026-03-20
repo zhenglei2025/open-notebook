@@ -18,10 +18,14 @@ export interface CreateUserRequest {
   is_admin: boolean
 }
 
+export interface RunningStats {
+  running_research: number
+}
+
 export const adminApi = {
-  listUsers: async (): Promise<User[]> => {
+  listUsers: async (): Promise<{ users: User[]; running_stats: RunningStats }> => {
     const response = await apiClient.get('/admin/users')
-    return response.data.users
+    return { users: response.data.users, running_stats: response.data.running_stats }
   },
 
   createUser: async (data: CreateUserRequest): Promise<{ message: string; user: User }> => {

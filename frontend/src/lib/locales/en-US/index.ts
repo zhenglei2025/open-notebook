@@ -1001,6 +1001,8 @@ export const enUS = {
     userAlreadyExists: "User \"{name}\" already exists",
     totalUsers: "{count} users total",
     page: "Page {current} / {total}",
+    runningOverview: "Running Tasks Overview",
+    running: "Running",
   },
   setupBanner: {
     encryptionRequired: "Encryption key not configured",

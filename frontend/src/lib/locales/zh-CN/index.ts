@@ -1000,6 +1000,8 @@ export const zhCN = {
     userAlreadyExists: "用户 \"{name}\" 已存在",
     totalUsers: "共 {count} 个用户",
     page: "第 {current} / {total} 页",
+    runningOverview: "运行中的任务概览",
+    running: "运行中",
   },
   setupBanner: {
     encryptionRequired: "未配置加密密钥",

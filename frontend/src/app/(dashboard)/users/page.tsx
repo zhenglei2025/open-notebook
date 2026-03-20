@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useToast } from '@/lib/hooks/use-toast'
-import { adminApi, User } from '@/lib/api/admin'
+import { adminApi, User, RunningStats } from '@/lib/api/admin'
 import { CreateUserDialog } from './components/CreateUserDialog'
 import {
     UserPlus,
@@ -24,6 +24,7 @@ import {
     ChevronRight,
     Search,
     BookOpen,
+    Activity,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -39,6 +40,7 @@ export default function UsersPage() {
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [deletingUser, setDeletingUser] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
+    const [runningStats, setRunningStats] = useState<RunningStats>({ running_research: 0 })
 
     const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE))
     const paginatedUsers = users.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -59,8 +61,9 @@ export default function UsersPage() {
     const loadUsers = useCallback(async () => {
         setIsLoading(true)
         try {
-            const data = await adminApi.listUsers()
+            const { users: data, running_stats } = await adminApi.listUsers()
             setUsers(data)
+            setRunningStats(running_stats)
             setCurrentPage(1)
         } catch {
             toastRef.current({
@@ -261,6 +264,21 @@ export default function UsersPage() {
                             </>
                         )}
                     </div>
+
+                    {/* Running Stats */}
+                    {!isLoading && (
+                        <div className="mt-4 border rounded-lg px-4 py-3 bg-muted/30 w-fit">
+                            <div className="flex items-center gap-3">
+                                <Activity className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-semibold">{t.admin.runningOverview}</span>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Research {t.admin.running}:</span>
+                                    <span className="font-medium">{runningStats.running_research}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -269,6 +287,6 @@ export default function UsersPage() {
                 onOpenChange={setIsCreateOpen}
                 onCreated={handleUserCreated}
             />
-        </AppShell>
+        </AppShell >
     )
 }
