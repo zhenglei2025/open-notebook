@@ -91,10 +91,17 @@ class EvaluationResult(BaseModel):
     )
 
 
+class SourceExpansionRequest(BaseModel):
+    source_id: str = Field(description="Source ID that needs full-text reading")
+    information_need: str = Field(
+        description="What specific information to look for in the full text"
+    )
+
+
 class ContextExpansionResult(BaseModel):
-    needs_full_context: List[str] = Field(
+    needs_full_context: List[SourceExpansionRequest] = Field(
         default_factory=list,
-        description="List of source IDs that need full-text context expansion",
+        description="List of sources that need full-text context expansion, each with a specific information need",
     )
     reason: str = Field(description="Why these sources need full context")
 
@@ -369,6 +376,7 @@ async def _extract_from_chunk(
     source_id: str,
     section: Dict[str, Any],
     config: RunnableConfig,
+    information_need: str = "",
 ) -> str:
     """Extract relevant info from a single chunk of full text."""
     prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
@@ -378,6 +386,7 @@ async def _extract_from_chunk(
             "source_title": f"{source_title} (part {chunk_index + 1})",
             "source_id": source_id,
             "full_text": chunk_text,
+            "information_need": information_need,
         }
     )
     model = await _provision_model(prompt, config, max_tokens=1024)
@@ -391,6 +400,7 @@ async def _extract_from_single_source(
     source_title: str,
     section: Dict[str, Any],
     config: RunnableConfig,
+    information_need: str = "",
 ) -> Optional[Dict[str, Any]]:
     """Fetch full text for one source and extract relevant info (≤500 chars).
     If the text exceeds MAX_FULL_TEXT_LENGTH, it is split into segments,
@@ -408,6 +418,7 @@ async def _extract_from_single_source(
                 "source_title": source_title,
                 "source_id": source_id,
                 "full_text": full_text,
+                "information_need": information_need,
             }
         )
         model = await _provision_model(prompt, config, max_tokens=1024)
@@ -430,7 +441,7 @@ async def _extract_from_single_source(
 
         # Extract from each segment in parallel
         tasks = [
-            _extract_from_chunk(seg, idx, source_title, source_id, section, config)
+            _extract_from_chunk(seg, idx, source_title, source_id, section, config, information_need)
             for idx, seg in enumerate(segments)
         ]
         chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -460,6 +471,7 @@ async def _extract_from_single_source(
                 "source_title": source_title,
                 "source_id": source_id,
                 "partial_extractions": combined,
+                "information_need": information_need,
             }
         )
         model = await _provision_model(consolidation_prompt, config, max_tokens=1024)
@@ -534,8 +546,8 @@ async def _expand_context(
 
     # Filter to only valid source IDs that exist in our results
     sources_to_expand = [
-        sid for sid in expansion_result.needs_full_context
-        if sid in source_ids_in_results
+        req for req in expansion_result.needs_full_context
+        if req.source_id in source_ids_in_results
     ]
 
     if not sources_to_expand:
@@ -544,15 +556,17 @@ async def _expand_context(
 
     logger.info(
         f"Context Expansion: expanding {len(sources_to_expand)} sources: "
-        f"{sources_to_expand} (reason: {expansion_result.reason})"
+        f"{[(r.source_id, r.information_need) for r in sources_to_expand]} "
+        f"(reason: {expansion_result.reason})"
     )
 
     # Step 2: Extract from each source in parallel
     tasks = [
         _extract_from_single_source(
-            sid, source_titles.get(sid, ""), section, config
+            req.source_id, source_titles.get(req.source_id, ""), section, config,
+            information_need=req.information_need,
         )
-        for sid in sources_to_expand
+        for req in sources_to_expand
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

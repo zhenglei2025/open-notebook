@@ -18,7 +18,9 @@ Analyze the retrieved chunks and determine which source documents need full-text
 - The section requires understanding the overall structure or flow of the source
 - Important context (like definitions, prerequisites, or conclusions) might be missing from the chunks
 
-Return a JSON object listing the source IDs that need full-text reading. Only include sources where reading the full text would meaningfully improve the section quality. Be selective - do not request full text for all sources.
+For each source you select, also describe what specific information you hope to obtain from the full text — for example, "need to understand the complete implementation steps" or "looking for the final conclusions and data analysis results."
+
+Return a JSON object listing the sources that need full-text reading. Only include sources where reading the full text would meaningfully improve the section quality. Be selective - do not request full text for all sources.
 
 # OUTPUT FORMAT
 

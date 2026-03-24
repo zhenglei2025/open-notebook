@@ -6,6 +6,15 @@ You are a research assistant. You have received multiple partial extractions fro
 
 Title: {{section_title}}
 Goal: {{section_description}}
+{% if information_need %}
+
+# INFORMATION NEED
+
+The following describes what specific information is expected from this source:
+{{information_need}}
+
+Prioritize the information described above when consolidating.
+{% endif %}
 
 # SOURCE DOCUMENT
 
