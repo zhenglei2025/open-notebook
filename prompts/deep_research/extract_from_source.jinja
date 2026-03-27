@@ -6,14 +6,14 @@ You are a research assistant. Your job is to read the full text of a source docu
 
 Title: {{section_title}}
 Goal: {{section_description}}
-{% if information_need %}
+{% if information_needs %}
 
-# INFORMATION NEED
+# INFORMATION NEEDS
 
-The following describes what specific information is expected from this source:
-{{information_need}}
-
-Pay special attention to extracting the information described above.
+Pay special attention to extracting the following:
+{% for need in information_needs %}
+- {{need}}
+{% endfor %}
 {% endif %}
 
 # SOURCE DOCUMENT

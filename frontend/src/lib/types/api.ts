@@ -108,6 +108,7 @@ export interface CreateNoteRequest {
   content: string
   note_type?: string
   notebook_id?: string
+  user_query?: string
 }
 
 export interface CreateSourceRequest {

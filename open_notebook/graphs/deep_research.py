@@ -9,6 +9,7 @@ A multi-step research agent that generates comprehensive reports by:
 
 import asyncio
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from ai_prompter import Prompter
@@ -93,8 +94,13 @@ class EvaluationResult(BaseModel):
 
 class SourceExpansionRequest(BaseModel):
     source_id: str = Field(description="Source ID that needs full-text reading")
-    information_need: str = Field(
-        description="What specific information to look for in the full text"
+    information_needs: List[str] = Field(
+        description="1-3 specific information needs to look for in the full text, each under 50 characters",
+        max_length=3,
+    )
+    priority: int = Field(
+        default=5,
+        description="Importance priority 1-10, where 10 means this source is critical for the section and 1 means marginally useful",
     )
 
 
@@ -376,7 +382,7 @@ async def _extract_from_chunk(
     source_id: str,
     section: Dict[str, Any],
     config: RunnableConfig,
-    information_need: str = "",
+    information_needs: List[str] = None,
 ) -> str:
     """Extract relevant info from a single chunk of full text."""
     prompt = Prompter(prompt_template="deep_research/extract_from_source").render(
@@ -386,7 +392,7 @@ async def _extract_from_chunk(
             "source_title": f"{source_title} (part {chunk_index + 1})",
             "source_id": source_id,
             "full_text": chunk_text,
-            "information_need": information_need,
+            "information_needs": information_needs or [],
         }
     )
     model = await _provision_model(prompt, config, max_tokens=1024)
@@ -400,7 +406,7 @@ async def _extract_from_single_source(
     source_title: str,
     section: Dict[str, Any],
     config: RunnableConfig,
-    information_need: str = "",
+    information_needs: List[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Fetch full text for one source and extract relevant info (≤500 chars).
     If the text exceeds MAX_FULL_TEXT_LENGTH, it is split into segments,
@@ -418,7 +424,7 @@ async def _extract_from_single_source(
                 "source_title": source_title,
                 "source_id": source_id,
                 "full_text": full_text,
-                "information_need": information_need,
+                "information_needs": information_needs or [],
             }
         )
         model = await _provision_model(prompt, config, max_tokens=1024)
@@ -441,7 +447,7 @@ async def _extract_from_single_source(
 
         # Extract from each segment in parallel
         tasks = [
-            _extract_from_chunk(seg, idx, source_title, source_id, section, config, information_need)
+            _extract_from_chunk(seg, idx, source_title, source_id, section, config, information_needs)
             for idx, seg in enumerate(segments)
         ]
         chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -471,7 +477,7 @@ async def _extract_from_single_source(
                 "source_title": source_title,
                 "source_id": source_id,
                 "partial_extractions": combined,
-                "information_need": information_need,
+                "information_needs": information_needs or [],
             }
         )
         model = await _provision_model(consolidation_prompt, config, max_tokens=1024)
@@ -544,19 +550,25 @@ async def _expand_context(
     cleaned = clean_thinking_content(content)
     expansion_result = parser.parse(cleaned)
 
-    # Filter to only valid source IDs that exist in our results
-    sources_to_expand = [
-        req for req in expansion_result.needs_full_context
-        if req.source_id in source_ids_in_results
-    ]
+    # Filter to only valid source IDs that exist in our results,
+    # then sort by priority descending so the most important sources come first
+    sources_to_expand = sorted(
+        [
+            req for req in expansion_result.needs_full_context
+            if req.source_id in source_ids_in_results
+        ],
+        key=lambda r: r.priority,
+        reverse=True,
+    )
 
     if not sources_to_expand:
         logger.info("Context Expansion: no sources need full-text reading")
         return []
 
     logger.info(
-        f"Context Expansion: expanding {len(sources_to_expand)} sources: "
-        f"{[(r.source_id, r.information_need) for r in sources_to_expand]} "
+        f"Context Expansion: expanding {len(sources_to_expand)} sources "
+        f"(sorted by priority): "
+        f"{[(r.source_id, r.priority, r.information_needs) for r in sources_to_expand]} "
         f"(reason: {expansion_result.reason})"
     )
 
@@ -564,7 +576,7 @@ async def _expand_context(
     tasks = [
         _extract_from_single_source(
             req.source_id, source_titles.get(req.source_id, ""), section, config,
-            information_need=req.information_need,
+            information_needs=req.information_needs,
         )
         for req in sources_to_expand
     ]
@@ -965,6 +977,9 @@ async def _process_single_section(
     ai_message = await _llm_invoke(model, write_prompt)
     content = extract_text_content(ai_message.content)
     draft = clean_thinking_content(content)
+
+    # Strip the writing plan (between <!-- PLAN --> and <!-- /PLAN --> markers)
+    draft = re.sub(r'<!--\s*PLAN\s*-->.*?<!--\s*/PLAN\s*-->', '', draft, flags=re.DOTALL).strip()
 
     logger.info(
         f"Deep Research: wrote section [{section_index}] "

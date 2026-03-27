@@ -84,8 +84,8 @@ export default function NotebookPage() {
         notes.forEach(note => {
           // Only set default if not already set
           if (!(note.id in newNoteSelections)) {
-            // Notes default to 'off' to prevent context overload
-            newNoteSelections[note.id] = 'off'
+            // Human notes default to 'full' (full-text context), AI notes default to 'off'
+            newNoteSelections[note.id] = note.note_type === 'human' ? 'full' : 'off'
           }
         })
         return { ...prev, notes: newNoteSelections }

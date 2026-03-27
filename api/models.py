@@ -178,6 +178,9 @@ class NoteCreate(BaseModel):
     notebook_id: Optional[str] = Field(
         None, description="Notebook ID to add the note to"
     )
+    user_query: Optional[str] = Field(
+        None, description="User query that prompted this AI response, used for title generation"
+    )
 
 
 class NoteUpdate(BaseModel):

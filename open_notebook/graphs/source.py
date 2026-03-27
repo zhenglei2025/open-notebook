@@ -16,7 +16,7 @@ from open_notebook.database.repository import admin_repo_query
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 
-_OFFICE_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
+_OFFICE_EXTENSIONS = {".docx", ".docm", ".xlsx", ".pptx"}
 
 
 class SourceState(TypedDict):
@@ -175,7 +175,7 @@ async def content_process(state: SourceState) -> dict:
         logger.warning(f"[content_process] extract_content failed: {type(e).__name__}: {e}")
 
         # Fallback: for .docx files, try raw XML extraction
-        if file_path and file_path.lower().endswith(".docx"):
+        if file_path and file_path.lower().endswith((".docx", ".docm")):
             logger.info("[content_process] Attempting raw DOCX extraction fallback...")
             raw_text = _extract_docx_raw(file_path)
             if raw_text:

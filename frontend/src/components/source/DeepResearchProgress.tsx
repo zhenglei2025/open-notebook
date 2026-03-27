@@ -20,6 +20,7 @@ interface DeepResearchProgressProps {
     error: string | null
     notebookId?: string
     researchType?: string
+    query?: string
 }
 
 interface SectionProgress {
@@ -34,7 +35,7 @@ interface SectionProgress {
     summarized: boolean
 }
 
-export function DeepResearchProgress({ events, isRunning, report, error, notebookId, researchType = 'deep' }: DeepResearchProgressProps) {
+export function DeepResearchProgress({ events, isRunning, report, error, notebookId, researchType = 'deep', query }: DeepResearchProgressProps) {
     const { t } = useTranslation()
     const { openModal } = useModalManager()
 
@@ -158,6 +159,7 @@ export function DeepResearchProgress({ events, isRunning, report, error, noteboo
                 <MessageActions
                     content={report}
                     notebookId={notebookId}
+                    userQuery={query}
                 />
             </div>
         )

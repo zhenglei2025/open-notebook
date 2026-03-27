@@ -58,12 +58,19 @@ async def create_note(note_data: NoteCreate):
         if not title and note_data.note_type == "ai" and note_data.content:
             from open_notebook.graphs.prompt import graph as prompt_graph
 
-            prompt = "Based on the Note below, please provide a Title for this content, with max 15 words"
             # Only send first 300 chars to save tokens on long content
             truncated_content = note_data.content[:300]
+
+            if note_data.user_query:
+                prompt = "Based on the User Question and the AI Response below, please provide a Title for this content, with max 15 words"
+                input_text = f"User Question: {note_data.user_query}\n\nAI Response: {truncated_content}"
+            else:
+                prompt = "Based on the Note below, please provide a Title for this content, with max 15 words"
+                input_text = truncated_content
+
             result = await prompt_graph.ainvoke(
                 {  # type: ignore[arg-type]
-                    "input_text": truncated_content,
+                    "input_text": input_text,
                     "prompt": prompt,
                 }
             )

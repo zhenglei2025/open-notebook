@@ -437,7 +437,7 @@ export function ChatPanel({
                   <p className="text-xs mt-2">{t.chat.askQuestions}</p>
                 </div>
               ) : (
-                messages.map((message) => (
+                messages.map((message, index) => (
                   <div
                     key={message.id}
                     className={`flex gap-3 ${message.type === 'human' ? 'justify-end' : 'justify-start'
@@ -470,6 +470,7 @@ export function ChatPanel({
                         <MessageActions
                           content={message.content}
                           notebookId={notebookId}
+                          userQuery={index > 0 && messages[index - 1].type === 'human' ? messages[index - 1].content : undefined}
                         />
                       )}
                     </div>
@@ -526,6 +527,7 @@ export function ChatPanel({
                       error={deepResearchError}
                       notebookId={notebookId}
                       researchType={quickResearchMode ? 'quick' : 'deep'}
+                      query={deepResearchQuery || undefined}
                     />
                   </div>
                 </div>
