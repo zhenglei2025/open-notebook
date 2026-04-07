@@ -136,9 +136,20 @@ export function useCreateSource() {
 
       // Show different messages based on processing mode
       if (variables.async_processing) {
+        const archiveQueuedCount = Number(result.processing_info?.archive_queued_sources_count ?? 0)
+        const archiveFailedCount = Number(result.processing_info?.archive_failed_sources_count ?? 0)
+
         toast({
           title: t.sources.sourceQueued,
-          description: t.sources.sourceQueuedDesc,
+          description: archiveQueuedCount > 1
+            ? (
+              archiveFailedCount > 0
+                ? t.sources.archivePartialQueuedDesc
+                  .replace('{success}', archiveQueuedCount.toString())
+                  .replace('{failed}', archiveFailedCount.toString())
+                : t.sources.archiveQueuedDesc.replace('{count}', archiveQueuedCount.toString())
+            )
+            : t.sources.sourceQueuedDesc,
         })
       } else {
         toast({

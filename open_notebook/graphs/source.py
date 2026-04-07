@@ -128,6 +128,7 @@ async def content_process(state: SourceState) -> dict:
 
     settings = await _get_content_settings()
     content_state: Dict[str, Any] = state["content_state"]  # type: ignore[assignment]
+    explicit_title = content_state.get("title")
 
     # Log input state details for debugging
     logger.info(f"[content_process] Content state keys: {list(content_state.keys())}")
@@ -208,6 +209,9 @@ async def content_process(state: SourceState) -> dict:
             "Could not extract any text content from this source. "
             "The content may be empty, inaccessible, or in an unsupported format."
         )
+
+    if explicit_title:
+        processed_state.title = explicit_title
 
     logger.info(f"[content_process] Done, content length: {len(processed_state.content)}")
     return {"content_state": processed_state}
@@ -290,4 +294,3 @@ workflow.add_edge("save_source", END)
 
 # Compile the graph
 source_graph = workflow.compile()
-

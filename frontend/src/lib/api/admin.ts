@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { FeedbackItem } from './feedback'
 
 export interface User {
   username: string
@@ -35,6 +36,11 @@ export const adminApi = {
 
   deleteUser: async (username: string): Promise<{ message: string }> => {
     const response = await apiClient.delete(`/admin/users/${username}`)
+    return response.data
+  },
+
+  listFeedback: async (): Promise<{ feedback: FeedbackItem[] }> => {
+    const response = await apiClient.get('/admin/feedback')
     return response.data
   },
 }

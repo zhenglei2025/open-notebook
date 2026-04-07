@@ -1,5 +1,8 @@
 import asyncio
 import os
+import shutil
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -36,6 +39,23 @@ from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
+
+ARCHIVE_IMPORT_FOLDER = "archive_imports"
+MAX_ARCHIVE_DEPTH = 8
+MAX_ARCHIVE_FILES = 1000
+_SKIP_ARCHIVE_FILENAMES = {".ds_store", "thumbs.db"}
+
+
+@dataclass
+class ExtractedArchiveFile:
+    file_path: str
+    display_title: str
+
+
+@dataclass
+class ExtractedArchive:
+    root_dir: str
+    files: list[ExtractedArchiveFile]
 
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
@@ -83,6 +103,409 @@ async def save_uploaded_file(upload_file: UploadFile) -> str:
         if os.path.exists(file_path):
             os.unlink(file_path)
         raise
+
+
+def _delete_path_safely(path: str | Path | None) -> None:
+    """Best-effort cleanup for files/directories created during import."""
+    if not path:
+        return
+
+    try:
+        target = Path(path)
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.exists():
+            target.unlink()
+    except Exception as e:
+        logger.warning(f"Failed to clean up path {path}: {e}")
+
+
+def _is_zip_filename(filename: str | None) -> bool:
+    return bool(filename and Path(filename).suffix.lower() == ".zip")
+
+
+def _is_supported_archive_member(path: Path) -> bool:
+    if not path.parts:
+        return False
+
+    if any(part in {"", ".", "..", "__MACOSX"} for part in path.parts):
+        return False
+
+    leaf = path.name.lower()
+    if leaf in _SKIP_ARCHIVE_FILENAMES or leaf.startswith("._"):
+        return False
+
+    return not path.name.startswith(".")
+
+
+def _archive_display_title(path: Path) -> str:
+    return path.as_posix()
+
+
+def _make_unique_path(path: Path) -> Path:
+    """Append counters when an extracted file path already exists."""
+    if not path.exists():
+        return path
+
+    counter = 1
+    while True:
+        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
+def _extract_zip_recursive(
+    archive_path: Path,
+    destination_root: Path,
+    *,
+    prefix: Path = Path(),
+    depth: int = 0,
+    collected_files: list[ExtractedArchiveFile] | None = None,
+) -> list[ExtractedArchiveFile]:
+    """Extract ZIP files recursively, preserving nested folders in titles."""
+    if depth > MAX_ARCHIVE_DEPTH:
+        raise ValueError(
+            f"ZIP nesting is too deep (>{MAX_ARCHIVE_DEPTH} levels)."
+        )
+
+    if collected_files is None:
+        collected_files = []
+
+    destination_root_resolved = destination_root.resolve()
+
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+
+            member_path = Path(member.filename)
+            if not _is_supported_archive_member(member_path):
+                continue
+
+            relative_path = prefix / member_path
+            candidate_path = (destination_root / relative_path).resolve()
+            if (
+                candidate_path != destination_root_resolved
+                and destination_root_resolved not in candidate_path.parents
+            ):
+                logger.warning(
+                    f"Skipping unsafe archive member path: {member.filename}"
+                )
+                continue
+
+            candidate_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path = _make_unique_path(candidate_path)
+
+            with archive.open(member, "r") as source_fp, open(target_path, "wb") as dest_fp:
+                shutil.copyfileobj(source_fp, dest_fp)
+
+            relative_target = target_path.relative_to(destination_root)
+
+            if _is_zip_filename(target_path.name):
+                nested_prefix = relative_target.parent / target_path.stem
+                _extract_zip_recursive(
+                    target_path,
+                    destination_root,
+                    prefix=nested_prefix,
+                    depth=depth + 1,
+                    collected_files=collected_files,
+                )
+                _delete_path_safely(target_path)
+                continue
+
+            collected_files.append(
+                ExtractedArchiveFile(
+                    file_path=str(target_path),
+                    display_title=_archive_display_title(relative_target),
+                )
+            )
+
+            if len(collected_files) > MAX_ARCHIVE_FILES:
+                raise ValueError(
+                    f"ZIP contains too many files (>{MAX_ARCHIVE_FILES})."
+                )
+
+    return collected_files
+
+
+def extract_archive_files(archive_path: str) -> ExtractedArchive:
+    """Expand a ZIP upload into persistent files for downstream source processing."""
+    archive = Path(archive_path)
+    archive_root = Path(UPLOADS_FOLDER) / ARCHIVE_IMPORT_FOLDER / archive.stem
+    archive_root.mkdir(parents=True, exist_ok=True)
+    extraction_root = Path(
+        generate_unique_filename(archive.stem, str(archive_root))
+    ).resolve()
+    extraction_root.mkdir(parents=True, exist_ok=True)
+
+    files = _extract_zip_recursive(archive, extraction_root)
+    if not files:
+        raise ValueError("No importable files were found inside the ZIP archive.")
+
+    return ExtractedArchive(root_dir=str(extraction_root), files=files)
+
+
+async def _create_pending_source(
+    *,
+    title: str,
+    notebook_ids: list[str],
+) -> Source:
+    source = Source(title=title, topics=[])
+    await source.save()
+
+    for notebook_id in notebook_ids:
+        await source.add_to_notebook(notebook_id)
+
+    return source
+
+
+async def _submit_async_source_processing(
+    *,
+    source: Source,
+    content_state: dict[str, Any],
+    notebook_ids: list[str],
+    transformation_ids: list[str],
+    embed: bool,
+) -> str:
+    import commands.source_commands  # noqa: F401
+
+    command_input = SourceProcessingInput(
+        source_id=str(source.id),
+        content_state=content_state,
+        notebook_ids=notebook_ids,
+        transformations=transformation_ids,
+        embed=embed,
+        user_db_name=get_current_user_db(),
+    )
+
+    command_id = await CommandService.submit_command_job(
+        "open_notebook",
+        "process_source",
+        command_input.model_dump(),
+    )
+
+    source.command = ensure_record_id(command_id)
+    await source.save()
+    return command_id
+
+
+async def _run_sync_source_processing(
+    *,
+    source: Source,
+    content_state: dict[str, Any],
+    notebook_ids: list[str],
+    transformation_ids: list[str],
+    embed: bool,
+):
+    import commands.source_commands  # noqa: F401
+
+    command_input = SourceProcessingInput(
+        source_id=str(source.id),
+        content_state=content_state,
+        notebook_ids=notebook_ids,
+        transformations=transformation_ids,
+        embed=embed,
+        user_db_name=get_current_user_db(),
+    )
+
+    result = await asyncio.to_thread(
+        execute_command_sync,
+        "open_notebook",
+        "process_source",
+        command_input.model_dump(),
+        timeout=300,
+    )
+
+    if not result.is_success():
+        raise RuntimeError(f"Processing failed: {result.error_message}")
+
+    if not source.id:
+        raise RuntimeError("Source ID is missing after processing")
+
+    processed_source = await Source.get(source.id)
+    if not processed_source:
+        raise RuntimeError("Processed source not found")
+
+    return processed_source
+
+
+async def _create_archive_response_async(
+    *,
+    source_data: SourceCreate,
+    archive: ExtractedArchive,
+    transformation_ids: list[str],
+    archive_path: str,
+) -> SourceResponse:
+    queued_sources: list[tuple[Source, str]] = []
+    failed_count = 0
+
+    try:
+        for extracted_file in archive.files:
+            source = await _create_pending_source(
+                title=extracted_file.display_title,
+                notebook_ids=source_data.notebooks or [],
+            )
+
+            try:
+                command_id = await _submit_async_source_processing(
+                    source=source,
+                    content_state={
+                        "file_path": extracted_file.file_path,
+                        "delete_source": source_data.delete_source,
+                        "title": extracted_file.display_title,
+                    },
+                    notebook_ids=source_data.notebooks or [],
+                    transformation_ids=transformation_ids,
+                    embed=source_data.embed,
+                )
+                queued_sources.append((source, command_id))
+            except Exception as e:
+                failed_count += 1
+                logger.error(
+                    f"Failed to queue archive file {extracted_file.display_title}: {e}"
+                )
+                await source.delete()
+                _delete_path_safely(extracted_file.file_path)
+
+        if not queued_sources:
+            _delete_path_safely(archive.root_dir)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to queue any files from the ZIP archive.",
+            )
+
+        first_source, first_command_id = queued_sources[0]
+        return SourceResponse(
+            id=first_source.id or "",
+            title=first_source.title,
+            topics=first_source.topics or [],
+            asset=None,
+            full_text=None,
+            embedded=False,
+            embedded_chunks=0,
+            created=str(first_source.created),
+            updated=str(first_source.updated),
+            command_id=first_command_id,
+            status="new",
+            processing_info={
+                "async": True,
+                "queued": True,
+                "archive": True,
+                "archive_files_count": len(archive.files),
+                "archive_queued_sources_count": len(queued_sources),
+                "archive_failed_sources_count": failed_count,
+            },
+        )
+    finally:
+        _delete_path_safely(archive_path)
+
+
+async def _create_archive_response_sync(
+    *,
+    source_data: SourceCreate,
+    archive: ExtractedArchive,
+    transformation_ids: list[str],
+    archive_path: str,
+) -> SourceResponse:
+    processed_sources: list[Source] = []
+    failed_count = 0
+
+    try:
+        for extracted_file in archive.files:
+            source = await _create_pending_source(
+                title=extracted_file.display_title,
+                notebook_ids=source_data.notebooks or [],
+            )
+
+            try:
+                processed_source = await _run_sync_source_processing(
+                    source=source,
+                    content_state={
+                        "file_path": extracted_file.file_path,
+                        "delete_source": source_data.delete_source,
+                        "title": extracted_file.display_title,
+                    },
+                    notebook_ids=source_data.notebooks or [],
+                    transformation_ids=transformation_ids,
+                    embed=source_data.embed,
+                )
+                processed_sources.append(processed_source)
+            except Exception as e:
+                failed_count += 1
+                logger.error(
+                    f"Failed to process archive file {extracted_file.display_title}: {e}"
+                )
+                await source.delete()
+                _delete_path_safely(extracted_file.file_path)
+
+        if not processed_sources:
+            _delete_path_safely(archive.root_dir)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to process any files from the ZIP archive.",
+            )
+
+        first_source = processed_sources[0]
+        embedded_chunks = await first_source.get_embedded_chunks()
+        return SourceResponse(
+            id=first_source.id or "",
+            title=first_source.title,
+            topics=first_source.topics or [],
+            asset=AssetModel(
+                file_path=first_source.asset.file_path if first_source.asset else None,
+                url=first_source.asset.url if first_source.asset else None,
+            )
+            if first_source.asset
+            else None,
+            full_text=first_source.full_text,
+            embedded=embedded_chunks > 0,
+            embedded_chunks=embedded_chunks,
+            created=str(first_source.created),
+            updated=str(first_source.updated),
+            processing_info={
+                "archive": True,
+                "archive_files_count": len(archive.files),
+                "archive_processed_sources_count": len(processed_sources),
+                "archive_failed_sources_count": failed_count,
+            },
+        )
+    finally:
+        _delete_path_safely(archive_path)
+
+
+async def _handle_archive_upload(
+    *,
+    source_data: SourceCreate,
+    archive_path: str,
+    transformation_ids: list[str],
+) -> SourceResponse:
+    try:
+        archive = extract_archive_files(archive_path)
+    except ValueError as e:
+        _delete_path_safely(archive_path)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except zipfile.BadZipFile as e:
+        _delete_path_safely(archive_path)
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded ZIP file is invalid or corrupted.",
+        ) from e
+
+    if source_data.async_processing:
+        return await _create_archive_response_async(
+            source_data=source_data,
+            archive=archive,
+            transformation_ids=transformation_ids,
+            archive_path=archive_path,
+        )
+
+    return await _create_archive_response_sync(
+        source_data=source_data,
+        archive=archive,
+        transformation_ids=transformation_ids,
+        archive_path=archive_path,
+    )
 
 
 def parse_source_form_data(
@@ -267,6 +690,7 @@ async def create_source(
 
     # Initialize file_path before try block so exception handlers can reference it
     file_path = None
+    final_file_path = None
 
     try:
         # Verify all specified notebooks exist (backward compatibility support)
@@ -326,6 +750,17 @@ async def create_source(
                 raise HTTPException(
                     status_code=404, detail=f"Transformation {trans_id} not found"
                 )
+
+        if source_data.title:
+            content_state["title"] = source_data.title
+
+        if source_data.type == "upload" and _is_zip_filename(final_file_path):
+            logger.info(f"Detected ZIP upload: {final_file_path}")
+            return await _handle_archive_upload(
+                source_data=source_data,
+                archive_path=final_file_path,
+                transformation_ids=transformation_ids,
+            )
 
         # Branch based on processing mode
         if source_data.async_processing:

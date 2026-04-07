@@ -315,6 +315,8 @@ export const enUS = {
     failedToDelete: "Failed to delete source",
     sourceQueued: "Source Queued",
     sourceQueuedDesc: "Source submitted for background processing. You can monitor progress in the sources list.",
+    archiveQueuedDesc: "ZIP expanded successfully. {count} file(s) were added to the processing queue.",
+    archivePartialQueuedDesc: "ZIP expanded with partial success: {success} file(s) queued, {failed} failed.",
     sourceAddedSuccess: "Source added successfully",
     failedToAddSource: "Failed to add source",
     sourceUpdatedSuccess: "Source updated successfully",

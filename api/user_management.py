@@ -59,6 +59,16 @@ async def init_admin_db():
                 DEFAULT time::now() VALUE $before OR time::now();
             DEFINE INDEX IF NOT EXISTS idx_users_username ON TABLE users
                 COLUMNS username UNIQUE;
+
+            DEFINE TABLE IF NOT EXISTS feedback SCHEMAFULL;
+            DEFINE FIELD IF NOT EXISTS username ON TABLE feedback TYPE string;
+            DEFINE FIELD IF NOT EXISTS category ON TABLE feedback TYPE string;
+            DEFINE FIELD IF NOT EXISTS title ON TABLE feedback TYPE string;
+            DEFINE FIELD IF NOT EXISTS description ON TABLE feedback TYPE string;
+            DEFINE FIELD IF NOT EXISTS status ON TABLE feedback TYPE string DEFAULT "new";
+            DEFINE FIELD IF NOT EXISTS created ON TABLE feedback TYPE datetime
+                DEFAULT time::now() VALUE $before OR time::now();
+            DEFINE INDEX IF NOT EXISTS idx_feedback_created ON TABLE feedback COLUMNS created;
             """
         )
 
@@ -375,6 +385,68 @@ async def delete_user(username: str) -> bool:
         )
         logger.info(f"Deleted user '{username}'")
         return True
+
+
+async def create_feedback(
+    username: str,
+    category: str,
+    title: str,
+    description: str,
+) -> Dict[str, Any]:
+    """Create a feedback item in the shared admin database."""
+    async with admin_db_connection() as db:
+        result = parse_record_ids(
+            await db.query(
+                """
+                CREATE feedback SET
+                    username = $username,
+                    category = $category,
+                    title = $title,
+                    description = $description,
+                    status = "new",
+                    created = time::now()
+                """,
+                {
+                    "username": username,
+                    "category": category,
+                    "title": title,
+                    "description": description,
+                },
+            )
+        )
+
+        if result and isinstance(result, list):
+            for item in result:
+                if isinstance(item, list) and item:
+                    return item[0]
+                if isinstance(item, dict) and item.get("id"):
+                    return item
+
+    raise RuntimeError("Failed to create feedback")
+
+
+async def list_feedback() -> List[Dict[str, Any]]:
+    """List all feedback entries from newest to oldest."""
+    async with admin_db_connection() as db:
+        result = parse_record_ids(
+            await db.query(
+                """
+                SELECT id, username, category, title, description, status, created
+                FROM feedback
+                ORDER BY created DESC
+                """
+            )
+        )
+
+        feedback_items: List[Dict[str, Any]] = []
+        if result and isinstance(result, list):
+            for item in result:
+                if isinstance(item, list):
+                    feedback_items.extend(item)
+                elif isinstance(item, dict):
+                    feedback_items.append(item)
+
+        return feedback_items
 
 
 def generate_login_token(user: Dict[str, Any]) -> str:

@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useToast } from '@/lib/hooks/use-toast'
 import { adminApi, User, RunningStats } from '@/lib/api/admin'
+import { FeedbackItem } from '@/lib/api/feedback'
 import { CreateUserDialog } from './components/CreateUserDialog'
 import {
     UserPlus,
@@ -25,6 +27,9 @@ import {
     Search,
     BookOpen,
     Activity,
+    MessageSquareWarning,
+    Bug,
+    Lightbulb,
 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -41,6 +46,7 @@ export default function UsersPage() {
     const [deletingUser, setDeletingUser] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
     const [runningStats, setRunningStats] = useState<RunningStats>({ running_research: 0 })
+    const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
 
     const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE))
     const paginatedUsers = users.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -61,9 +67,13 @@ export default function UsersPage() {
     const loadUsers = useCallback(async () => {
         setIsLoading(true)
         try {
-            const { users: data, running_stats } = await adminApi.listUsers()
+            const [{ users: data, running_stats }, { feedback }] = await Promise.all([
+                adminApi.listUsers(),
+                adminApi.listFeedback(),
+            ])
             setUsers(data)
             setRunningStats(running_stats)
+            setFeedbackItems(feedback)
             setCurrentPage(1)
         } catch {
             toastRef.current({
@@ -267,17 +277,77 @@ export default function UsersPage() {
 
                     {/* Running Stats */}
                     {!isLoading && (
-                        <div className="mt-4 border rounded-lg px-4 py-3 bg-muted/30 w-fit">
-                            <div className="flex items-center gap-3">
-                                <Activity className="h-4 w-4 text-primary" />
-                                <span className="text-sm font-semibold">{t.admin.runningOverview}</span>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span className="text-muted-foreground">Research {t.admin.running}:</span>
-                                    <span className="font-medium">{runningStats.running_research}</span>
+                        <>
+                            <Card className="mt-6">
+                                <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+                                    <div>
+                                        <CardTitle className="flex items-center gap-2 text-xl">
+                                            <MessageSquareWarning className="h-5 w-5 text-primary" />
+                                            使用反馈
+                                        </CardTitle>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            用户在“使用反馈”页面提交的需求建议和 bug 描述会显示在这里。
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline">{feedbackItems.length} 条</Badge>
+                                </CardHeader>
+                                <CardContent>
+                                    {feedbackItems.length === 0 ? (
+                                        <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+                                            还没有用户提交反馈
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {feedbackItems.map((item) => {
+                                                const isBug = item.category === 'bug'
+                                                const Icon = isBug ? Bug : Lightbulb
+                                                const badgeLabel = isBug ? 'Bug 反馈' : '需求建议'
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className="rounded-xl border border-border/70 bg-background p-4 shadow-sm"
+                                                    >
+                                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                                            <div className="space-y-2">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <Badge variant={isBug ? 'destructive' : 'secondary'} className="gap-1">
+                                                                        <Icon className="h-3 w-3" />
+                                                                        {badgeLabel}
+                                                                    </Badge>
+                                                                    <Badge variant="outline">{item.username}</Badge>
+                                                                    <span className="text-xs text-muted-foreground">
+                                                                        {new Date(item.created).toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-base font-semibold text-foreground">{item.title}</div>
+                                                                <p className="whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
+                                                                    {item.description}
+                                                                </p>
+                                                            </div>
+                                                            <Badge variant="outline" className="w-fit">
+                                                                {item.status}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+
+                            <div className="mt-4 border rounded-lg px-4 py-3 bg-muted/30 w-fit">
+                                <div className="flex items-center gap-3">
+                                    <Activity className="h-4 w-4 text-primary" />
+                                    <span className="text-sm font-semibold">{t.admin.runningOverview}</span>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="text-muted-foreground">Research {t.admin.running}:</span>
+                                        <span className="font-medium">{runningStats.running_research}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </>
                     )}
                 </div>
             </div>

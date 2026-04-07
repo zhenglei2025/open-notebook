@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UP Notebook 使用说明</title>
+    <meta name="description" content="UP Notebook 中文使用说明，包含核心功能、推荐工作流、Research 用法与导出方式。">
+    <style>
+        :root {
+            --bg: #f4f7f1;
+            --paper: rgba(255, 255, 255, 0.94);
+            --paper-strong: #ffffff;
+            --text: #1d2a24;
+            --muted: #5d6c66;
+            --line: rgba(29, 42, 36, 0.09);
+            --brand: #2f6f58;
+            --brand-strong: #214f40;
+            --accent: #c7762c;
+            --hero-a: #315c45;
+            --hero-b: #b96428;
+            --shadow: 0 20px 56px rgba(34, 48, 41, 0.10);
+            --radius: 24px;
+            --code-bg: #18211d;
+            --code-text: #e7f1eb;
+        }
+
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            margin: 0;
+            color: var(--text);
+            font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(47, 111, 88, 0.14), transparent 28%),
+                radial-gradient(circle at top right, rgba(199, 118, 44, 0.16), transparent 26%),
+                linear-gradient(180deg, #eef5ee 0%, var(--bg) 34%, #f9fbf7 100%);
+        }
+
+        a { color: inherit; }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            backdrop-filter: blur(18px);
+            background: rgba(244, 247, 241, 0.84);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .shell,
+        .hero,
+        .footer {
+            width: min(1180px, calc(100% - 32px));
+            margin: 0 auto;
+        }
+
+        .topbar-inner {
+            width: min(1180px, calc(100% - 32px));
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 0;
+        }
+
+        .brand {
+            font-size: 0.96rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            color: var(--brand-strong);
+        }
+
+        .nav {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            text-decoration: none;
+            padding: 9px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--brand-strong);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .hero {
+            padding: 32px 0 24px;
+        }
+
+        .hero-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 34px;
+            padding: 38px;
+            color: #fffef8;
+            background:
+                radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.18), transparent 24%),
+                radial-gradient(circle at 88% 6%, rgba(255, 215, 170, 0.22), transparent 24%),
+                linear-gradient(135deg, var(--hero-a) 0%, #3d7757 42%, var(--hero-b) 100%);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            right: -70px;
+            bottom: -90px;
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 68%);
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.14);
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+        }
+
+        h1 {
+            margin: 16px 0 12px;
+            font-size: clamp(2.2rem, 5vw, 3.8rem);
+            line-height: 1.06;
+        }
+
+        .hero-copy {
+            max-width: 860px;
+            margin: 0;
+            line-height: 1.9;
+            font-size: 1.04rem;
+            color: rgba(255, 254, 248, 0.92);
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .hero-pill {
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            line-height: 1.6;
+            font-size: 0.94rem;
+        }
+
+        .shell {
+            display: grid;
+            grid-template-columns: 290px minmax(0, 1fr);
+            gap: 22px;
+            padding-bottom: 36px;
+            align-items: start;
+        }
+
+        .sidebar,
+        .panel {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 80px;
+            border-radius: var(--radius);
+            padding: 22px;
+        }
+
+        .sidebar h2 {
+            margin: 0 0 10px;
+            font-size: 1.28rem;
+        }
+
+        .sidebar p {
+            margin: 0 0 14px;
+            color: var(--muted);
+            line-height: 1.8;
+            font-size: 0.92rem;
+        }
+
+        .toc {
+            display: grid;
+            gap: 8px;
+        }
+
+        .toc a {
+            text-decoration: none;
+            padding: 11px 13px;
+            border-radius: 14px;
+            background: rgba(47, 111, 88, 0.06);
+            color: var(--brand-strong);
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        .sidebar-note {
+            margin-top: 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(47, 111, 88, 0.09), rgba(199, 118, 44, 0.08));
+            color: var(--muted);
+            line-height: 1.8;
+            font-size: 0.88rem;
+        }
+
+        .content {
+            display: grid;
+            gap: 20px;
+        }
+
+        .panel {
+            border-radius: 26px;
+            padding: 28px;
+        }
+
+        .panel-kicker {
+            color: var(--brand);
+            font-size: 0.84rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .panel h2 {
+            margin: 8px 0 0;
+            font-size: 2rem;
+            line-height: 1.15;
+        }
+
+        .panel-intro {
+            margin: 12px 0 0;
+            color: var(--muted);
+            line-height: 1.9;
+        }
+
+        .grid-2,
+        .grid-3,
+        .step-grid {
+            display: grid;
+            gap: 14px;
+            margin-top: 18px;
+        }
+
+        .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .step-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+        .card,
+        .step,
+        .callout,
+        .link-card {
+            border-radius: 18px;
+            background: var(--paper-strong);
+            border: 1px solid var(--line);
+            padding: 18px;
+        }
+
+        .card strong,
+        .step strong,
+        .callout strong,
+        .link-card strong {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .card p,
+        .step p,
+        .callout p,
+        .link-card p,
+        .panel li {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.84;
+        }
+
+        .panel ul,
+        .panel ol {
+            margin: 14px 0 0;
+            padding-left: 22px;
+        }
+
+        .highlight {
+            border-left: 4px solid var(--accent);
+            background: linear-gradient(135deg, rgba(199, 118, 44, 0.08), rgba(47, 111, 88, 0.05));
+        }
+
+        .code-block {
+            margin-top: 16px;
+            padding: 18px 20px;
+            border-radius: 18px;
+            background: var(--code-bg);
+            color: var(--code-text);
+            font-family: "JetBrains Mono", "SFMono-Regular", "Menlo", monospace;
+            font-size: 0.88rem;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            margin-top: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        th {
+            background: #f7faf6;
+            font-size: 0.92rem;
+        }
+
+        .footer {
+            padding-bottom: 40px;
+        }
+
+        .footer-card {
+            border-radius: 24px;
+            padding: 24px;
+            color: rgba(255, 255, 255, 0.9);
+            background: linear-gradient(135deg, #183124 0%, #355a42 56%, #8c5328 100%);
+            box-shadow: var(--shadow);
+        }
+
+        .footer-card p {
+            margin: 0;
+            line-height: 1.9;
+        }
+
+        @media (max-width: 980px) {
+            .hero-grid,
+            .grid-2,
+            .grid-3,
+            .step-grid,
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: static;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .topbar-inner {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .hero-card,
+            .panel {
+                padding: 22px;
+            }
+
+            .panel h2 {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">UP Notebook 使用说明</div>
+            <nav class="nav">
+                <a href="#workflow">推荐流程</a>
+                <a href="#features">核心功能</a>
+                <a href="#faq">常见问题</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="hero-card">
+            <span class="eyebrow">Privacy-First Research Workspace</span>
+            <h1>UP Notebook 中文使用说明</h1>
+            <p class="hero-copy">
+                UP Notebook 是一个可自托管、注重隐私的 AI 研究工作台。你可以把 PDF、网页、音视频和文本放进笔记本里，
+                让 AI 带着上下文回答问题、生成笔记、做搜索、批量提炼信息，甚至把研究内容转成播客音频。
+            </p>
+            <div class="hero-grid">
+                <div class="hero-pill">支持内网 GLM、Qwen 等多种模型调用，支持私有化部署</div>
+                <div class="hero-pill">支持 PDF、网页、音频、视频、纯文本等多模态资料</div>
+                <div class="hero-pill">可以对资料聊天、搜索、做引用校验、生成摘要和结构化输出</div>
+                <div class="hero-pill">支持 Quick Research、Deep Research 和基于笔记生成 PPT</div>
+            </div>
+        </div>
+    </section>
+
+    <main class="shell">
+        <aside class="sidebar">
+            <h2>目录</h2>
+            <p>这是一份面向普通使用者的单页说明，重点放在日常使用流程、研究产出和文档导出。</p>
+            <nav class="toc">
+                <a href="#overview">1. 项目简介</a>
+                <a href="#workflow">2. 推荐工作流</a>
+                <a href="#features">3. 核心功能</a>
+                <a href="#research-tools">4. Research 功能</a>
+                <a href="#scenarios">5. 适用场景</a>
+                <a href="#faq">6. 常见问题</a>
+                <a href="#roadmap">7. 未来规划</a>
+            </nav>
+            <div class="sidebar-note">
+                普通用户主线：创建 Notebook → 添加资料 → 开始 Chat → 需要成稿时切到 Quick Research 或 Deep Research → 保存为笔记并导出 → 需要汇报时生成 PPT。
+            </div>
+        </aside>
+
+        <section class="content">
+            <article class="panel" id="overview">
+                <div class="panel-kicker">Overview</div>
+                <h2>项目简介</h2>
+                <p class="panel-intro">
+                    UP Notebook 可以理解为一个“带 AI 的研究资料工作台”。它和普通聊天工具的区别在于：
+                    资料是你主动导入和组织的，AI 回答建立在这些资料之上，而且可以结合搜索、笔记、转换模板和播客生成功能形成完整工作流。
+                </p>
+                <div class="grid-3">
+                    <div class="card">
+                        <strong>数据可控</strong>
+                        <p>支持自托管，资料和配置掌握在你自己手里，适合对隐私和可控性要求高的场景。</p>
+                    </div>
+                    <div class="card">
+                        <strong>模型可选</strong>
+                        <p>不是绑定单一厂商，你可以接 OpenAI，也可以接本地 Ollama 或其他兼容接口。</p>
+                    </div>
+                    <div class="card">
+                        <strong>研究闭环</strong>
+                        <p>从导入资料、提问、保存笔记到结构化提炼和播客生成，整个过程都在一个系统内完成。</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel" id="workflow">
+                <div class="panel-kicker">Workflow</div>
+                <h2>推荐工作流</h2>
+                <p class="panel-intro">
+                    如果你是第一次用 UP Notebook，建议按下面这条路径走。这样最容易把“资料、上下文、问答、笔记”这几件事串起来。
+                </p>
+                <div class="step-grid">
+                    <div class="step">
+                        <strong>1. 创建 Notebook</strong>
+                        <p>每个 Notebook 对应一个研究主题，比如“行业调研”“课程资料”“产品竞品分析”。不要把所有内容堆在同一个本子里。</p>
+                    </div>
+                    <div class="step">
+                        <strong>2. 添加 Source</strong>
+                        <p>上传 PDF、网页链接、文本、音视频等资料。支持批量上传，等待系统完成解析和索引。</p>
+                    </div>
+                    <div class="step">
+                        <strong>3. 进入 Chat</strong>
+                        <p>选择要带入上下文的资料后开始提问。第一轮建议先问“这份资料的核心结论是什么”。</p>
+                    </div>
+                    <div class="step">
+                        <strong>4. 需要成稿时用 Research</strong>
+                        <p>如果你不只是想聊天，而是想直接产出一份研究报告，可以在聊天区切换到 Quick Research 或 Deep Research。规则复杂、格式严格的文档生成任务更适合 Deep Research。</p>
+                    </div>
+                    <div class="step">
+                        <strong>5. 需要落地文档时先保存为笔记</strong>
+                        <p>Research 结果先保存到笔记，再进行人工修改。笔记支持继续编辑，并导出为 Word、PDF、HTML 等格式。</p>
+                    </div>
+                    <div class="step">
+                        <strong>6. 需要汇报材料时生成 PPT</strong>
+                        <p>当某条笔记已经整理成较完整内容后，可以在笔记编辑器里点击制作 PPT，让系统基于笔记自动生成演示文稿。</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel" id="features">
+                <div class="panel-kicker">Features</div>
+                <h2>核心功能</h2>
+                <div class="grid-2">
+                    <div class="card">
+                        <strong>添加资料</strong>
+                        <p>支持 PDF、网页、文档、音频、视频、直接粘贴文本。系统会对内容进行处理，供后续聊天和搜索使用。</p>
+                    </div>
+                    <div class="card">
+                        <strong>上下文聊天</strong>
+                        <p>AI 回答不是凭空生成，而是基于你选中的资料上下文。适合问总结、比较、解释、提炼和延伸问题。</p>
+                    </div>
+                    <div class="card">
+                        <strong>笔记管理</strong>
+                        <p>你可以手动写笔记，也可以把 AI 回答保存为笔记，用于沉淀结论、摘录、任务清单和整理结构。</p>
+                    </div>
+                    <div class="card">
+                        <strong>搜索</strong>
+                        <p>既支持关键词精确检索，也支持语义相似检索。适合“找原句”和“找相关概念”两类不同需求。</p>
+                    </div>
+                    <div class="card">
+                        <strong>Quick Research / Deep Research</strong>
+                        <p>这两个模式会直接围绕你的问题生成研究报告，适合从“提问式探索”切换到“产出式研究”。</p>
+                    </div>
+                    <div class="card">
+                        <strong>基于笔记生成 PPT</strong>
+                        <p>你可以把已经整理好的笔记转换成 PowerPoint，系统会异步生成任务，完成后可直接下载 `.pptx` 文件。</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel" id="research-tools">
+                <div class="panel-kicker">Research Tools</div>
+                <h2>Quick Research、Deep Research 与 PPT</h2>
+                <p class="panel-intro">
+                    这是 UP Notebook 里比较“产出导向”的三项能力。它们都不只是简单回答一句话，而是把你已有的资料进一步加工成更完整的结果。
+                </p>
+                <div class="grid-3">
+                    <div class="card">
+                        <strong>Quick Research</strong>
+                        <p>入口在聊天面板。它会基于你的问题先规划报告结构，然后每个章节只做一轮搜索，跳过复杂评估，最后快速拼成一份报告，适合先拿到初稿。</p>
+                    </div>
+                    <div class="card">
+                        <strong>Deep Research</strong>
+                        <p>同样从聊天面板触发，但流程更完整。它会先做大纲规划，再按章节搜索、评估材料是否足够、必要时扩展到全文阅读，最后编译成更完整、更有层次的研究报告。</p>
+                    </div>
+                    <div class="card">
+                        <strong>生成 PPT</strong>
+                        <p>入口在笔记编辑器。系统会把笔记内容交给模型生成幻灯片结构，再套用项目里的 PPT 模板生成可下载文件，适合把研究结果转成汇报材料。</p>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>功能</th>
+                                <th>更适合什么情况</th>
+                                <th>特点</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Quick Research</td>
+                                <td>想快速拿到结构化报告初稿</td>
+                                <td>速度更快，搜索轮次更少，直接生成结果，适合快速调研</td>
+                            </tr>
+                            <tr>
+                                <td>Deep Research</td>
+                                <td>想要更完整、更稳的研究报告</td>
+                                <td>会按章节做搜索与评估，必要时读全文，生成过程更深、更慢，但通常更扎实</td>
+                            </tr>
+                            <tr>
+                                <td>生成 PPT</td>
+                                <td>已经有笔记或报告，准备做展示</td>
+                                <td>基于笔记内容生成幻灯片任务，可追加“控制在 10 页内”“突出关键发现”等要求</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="grid-2">
+                    <div class="callout highlight">
+                        <strong>Quick Research 在做什么</strong>
+                        <p>从代码实现看，它会先为问题规划章节，再对每个章节执行一次搜索并直接写出内容，省略了材料充分性评估和更复杂的章节精修，所以更适合速度优先的场景。</p>
+                    </div>
+                    <div class="callout highlight">
+                        <strong>Deep Research 在做什么</strong>
+                        <p>它会先围绕问题做检索和大纲规划，再对每个章节循环执行“搜索 → 评估是否足够 → 必要时扩展上下文 → 写作 → 汇总”，因此更像一个多阶段研究代理。</p>
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="card">
+                        <strong>如何使用 Quick / Deep Research</strong>
+                        <p>在 Notebook 的聊天区，先确保上下文已开启并选好资料，再点击工具栏里的 Quick Research 或 Deep Research，输入问题后系统会在后台跑任务，并在界面中展示进度和最终报告。</p>
+                    </div>
+                    <div class="card">
+                        <strong>如何使用 PPT 生成功能</strong>
+                        <p>先打开一条已有笔记，点击“制作 PPT”，可选填写附加要求，例如“突出结论、控制在 10 页以内”。任务完成后会出现在 PPT 任务列表里，并支持下载。</p>
+                    </div>
+                </div>
+                <div class="callout highlight" style="margin-top: 18px;">
+                    <strong>Deep Research 用法示例：法律部生成专利提案表</strong>
+                    <p>这是一个很适合 Deep Research 的真实范式。场景是法律部或知识产权同事，需要基于固定模板、评审标准、管理办法和本次研发创新点，自动生成一份专利提案表初稿。</p>
+                </div>
+                <div class="step-grid">
+                    <div class="step">
+                        <strong>1. 创建专门的 Notebook</strong>
+                        <p>例如命名为“多模态 RAG 强化学习专利提案”。这个 Notebook 用来承载本次专利草案相关资料和输出。</p>
+                    </div>
+                    <div class="step">
+                        <strong>2. 批量上传规则资料</strong>
+                        <p>上传专利提案表模板、专利评审标准、中国银联专利工作管理办法等规则性文件。这类资料通常是长期复用的基础规则。</p>
+                    </div>
+                    <div class="step">
+                        <strong>3. 上传本次研发材料</strong>
+                        <p>继续上传本次专利相关研发文档，以及一份 <code>skill.md</code>，把用户的个性化要求、写作目标和重点创新点写进去。</p>
+                    </div>
+                    <div class="step">
+                        <strong>4. 在 Chat 中直接按 skill 发起问题</strong>
+                        <p>用户的 query 可以非常简单，例如“请根据我上传的 skill 模板，帮我生成报告”。模型重点参考 <code>skill.md</code> 和上下文中的规则文件来写提案表。</p>
+                    </div>
+                    <div class="step">
+                        <strong>5. 选择 Deep Research 开始生成</strong>
+                        <p>由于这类任务既要遵守模板，又要整合创新点并匹配评审标准，Deep Research 比普通聊天或 Quick Research 更合适。</p>
+                    </div>
+                    <div class="step">
+                        <strong>6. 结果保存到笔记并人工修订</strong>
+                        <p>Deep Research 生成提案表后，先保存到笔记。笔记支持继续手动修改，便于法律部或发明人补充措辞、调整表述和校正细节。</p>
+                    </div>
+                    <div class="step">
+                        <strong>7. 导出 Word、PDF 等格式</strong>
+                        <p>笔记编辑器里已经支持导出 Word、PDF、HTML，本地整理和提交会更方便。后续如果还要汇报，也可以继续基于笔记生成 PPT。</p>
+                    </div>
+                    <div class="step">
+                        <strong>8. 新创新点可复用规则资料</strong>
+                        <p>当后续要针对新的创新点再生成提案表时，规则文件通常不需要重复上传，可以继续复用；只需要补充新的研发文档，开启新会话重新执行 Deep Research 即可。</p>
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="card">
+                        <strong><code>skill.md</code> 在这个场景里的作用</strong>
+                        <p><code>skill.md</code> 相当于一份“任务意图说明书”。它可以把发明主题、必须遵循的模板、创新点来源、写作风格和生成目标写清楚，让模型更稳定地输出符合要求的专利提案表。</p>
+                    </div>
+                    <div class="card">
+                        <strong><code>skill.md</code> 可定制、可共享</strong>
+                        <p>用户可以按项目需求随时调整 <code>skill.md</code> 内容。未来如果系统支持共享型 skill，这类专利提案模板也很适合沉淀成可复用的团队能力。</p>
+                    </div>
+                </div>
+                <div class="code-block">skill.md 示例思路
+
+我需要写 1 份基于强化学习的多模态检索增强生成方法的专利。
+context 中已经上传了专利提案表（2025 版）模板、专利评审标准（2025 版）、
+中国银联专利工作管理办法等要求，请根据这些标准和规则，
+基于 “R3-RAG-Learning Step-by-Step Reasoning and Retrieval for LLMs via Reinforcement Learning”
+和“创新点思考”两份文件提供的主要创新点，
+帮我按照专利提案表（2025 版）模板要求生成一份专利提案表。</div>
+            </article>
+
+            <article class="panel" id="scenarios">
+                <div class="panel-kicker">Scenarios</div>
+                <h2>适用场景</h2>
+                <div class="grid-3">
+                    <div class="card">
+                        <strong>论文和课程资料整理</strong>
+                        <p>把 PDF、讲义和网页资料放在一个 Notebook 中，围绕概念、方法和对比持续追问。</p>
+                    </div>
+                    <div class="card">
+                        <strong>行业与竞品调研</strong>
+                        <p>导入报告、官网、访谈稿和产品说明，快速抽取重点、归纳差异并沉淀为笔记。</p>
+                    </div>
+                    <div class="card">
+                        <strong>个人知识库</strong>
+                        <p>适合把零散资料集中起来，让 AI 帮你总结、联想和复盘，而不是单纯堆文件。</p>
+                    </div>
+                    <div class="card">
+                        <strong>法律与专利材料生成</strong>
+                        <p>适合把模板、制度办法、评审标准和研发资料一起放进 Notebook，用 Deep Research 生成专利提案表、制度化初稿或合规说明文档。</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel" id="faq">
+                <div class="panel-kicker">FAQ</div>
+                <h2>常见问题</h2>
+                <div class="grid-2">
+                    <div class="card">
+                        <strong>页面能打开，但不能问答</strong>
+                        <p>通常是还没配置 API Key，或者模型还没注册成功。先去设置里测试连接和发现模型。</p>
+                    </div>
+                    <div class="card">
+                        <strong>搜索结果不理想</strong>
+                        <p>如果你记得关键词，用文本搜索；如果只记得大意或主题，用向量搜索。两种方式要分开使用。</p>
+                    </div>
+                    <div class="card">
+                        <strong>一个 Notebook 放太多东西会怎样</strong>
+                        <p>上下文会变杂，结果更难聚焦。推荐按研究主题拆分，不同项目分别建立 Notebook。</p>
+                    </div>
+                    <div class="card">
+                        <strong>本地模型能不能用</strong>
+                        <p>可以。项目支持 Ollama、LM Studio 等本地方案，适合更注重隐私或想控制成本的场景。</p>
+                    </div>
+                    <div class="card">
+                        <strong>Quick Research 和 Deep Research 怎么选</strong>
+                        <p>先用 Quick Research 拿初稿、看方向；当你要更完整、更有条理、对材料覆盖更充分的结果时，再用 Deep Research。</p>
+                    </div>
+                    <div class="card">
+                        <strong>PPT 是直接拿原始文件生成吗</strong>
+                        <p>不是，它是基于“笔记内容”生成的。所以更推荐先把结论整理成一条比较完整的笔记，再去制作 PPT，效果会更稳定。</p>
+                    </div>
+                    <div class="card">
+                        <strong>规则文件每次都要重新上传吗</strong>
+                        <p>不一定。如果是长期稳定的模板、管理办法、评审标准，可以在同一个 Notebook 中长期复用；后续换新的创新点时，只补新的研发文档并新建会话即可。</p>
+                    </div>
+                    <div class="card">
+                        <strong><code>skill.md</code> 一定要固定吗</strong>
+                        <p>不是。它本质上是用户可自定义的任务说明文件，可以按专利类型、部门习惯或文档要求持续调整。后续也很适合演进成共享型 skill。</p>
+                    </div>
+                </div>
+                <div class="callout highlight" style="margin-top: 18px;">
+                    <strong>最常见的误区</strong>
+                    <p>把它当成“普通聊天网页”来用。UP Notebook 的价值不只是聊天，而是把资料组织、引用、搜索、研究成稿、汇报输出和知识沉淀串成一个流程。</p>
+                </div>
+            </article>
+
+            <article class="panel" id="roadmap">
+                <div class="panel-kicker">Roadmap</div>
+                <h2>未来规划</h2>
+                <p class="panel-intro">
+                    UP Notebook 后续会继续围绕“研究效率、内容产出、企业内网能力整合”这三条主线迭代，下面是当前比较明确的方向。
+                </p>
+                <div class="grid-2">
+                    <div class="card">
+                        <strong>Deep Research 支持定制 Skill</strong>
+                        <p>后续会让 Deep Research 更好地支持用户自定义 Skill，把专利提案、行业分析、制度解读、汇报写作等固定流程沉淀成可复用能力。</p>
+                    </div>
+                    <div class="card">
+                        <strong>PPT 生成功能持续迭代</strong>
+                        <p>会继续增强基于笔记生成 PPT 的能力，包括更稳定的结构生成、更好的版式控制，以及更贴近业务汇报场景的输出效果。</p>
+                    </div>
+                    <div class="card">
+                        <strong>引入更多 PPT 生成能力</strong>
+                        <p>未来会考虑购买或引入其他成熟的 PPT 生成能力，让演示文稿输出不只停留在基础排版，而是具备更强的设计感和业务表达能力。</p>
+                    </div>
+                    <div class="card">
+                        <strong>播客生成接入内部 ASR / TTS</strong>
+                        <p>后续计划更多使用内部 ASR 和 TTS 能力，生成更自然的对话型播客，方便把研究内容转换成可听化材料。</p>
+                    </div>
+                    <div class="card">
+                        <strong>联网搜索能力</strong>
+                        <p>等后续内网和外网链路打通后，系统可以在互联网搜索资料，让 Notebook 不只依赖本地上传内容，也能结合外部公开信息做研究。</p>
+                    </div>
+                    <div class="card">
+                        <strong>企业内网资料整合</strong>
+                        <p>随着内网能力逐步完善，后续也会更适合接入企业已有知识库、制度文档和项目资料，让研究流程真正融入内部工作环境。</p>
+                    </div>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-card">
+            <p>
+                建议把这个页面当成快速入门版说明。真正上手时，最关键的不是把所有功能都看一遍，
+                而是先完成一次完整闭环：创建 Notebook、导入资料、提出问题、保存笔记。跑通一次之后，
+                你会更容易理解 UP Notebook 的使用方式。
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

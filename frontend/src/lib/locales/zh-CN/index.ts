@@ -315,6 +315,8 @@ export const zhCN = {
     failedToDelete: "删除来源失败",
     sourceQueued: "来源已加入队列",
     sourceQueuedDesc: "来源已提交进行后台处理。您可以在来源列表中监控进度。",
+    archiveQueuedDesc: "ZIP 已成功展开，{count} 个文件已加入处理队列。",
+    archivePartialQueuedDesc: "ZIP 已展开，但只有部分成功：{success} 个文件已排队，{failed} 个失败。",
     sourceAddedSuccess: "来源添加成功",
     failedToAddSource: "添加来源失败",
     sourceUpdatedSuccess: "来源更新成功",

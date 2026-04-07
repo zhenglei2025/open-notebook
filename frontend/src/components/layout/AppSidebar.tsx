@@ -30,6 +30,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { Separator } from '@/components/ui/separator'
 import {
   Book,
+  BookOpenText,
   Search,
   Mic,
   Bot,
@@ -44,6 +45,7 @@ import {
   Command,
   Users,
   ListTodo,
+  MessageSquareWarning,
 } from 'lucide-react'
 
 const getNavigation = (t: TranslationKeys, isAdmin: boolean) => [
@@ -59,6 +61,8 @@ const getNavigation = (t: TranslationKeys, isAdmin: boolean) => [
       { name: t.navigation.notebooks, href: '/notebooks', icon: Book },
       { name: t.navigation.askAndSearch, href: '/search', icon: Search },
       { name: t.navigation.researchTasks, href: '/research-tasks', icon: ListTodo },
+      { name: '使用指南', href: '/guide', icon: BookOpenText },
+      { name: '使用反馈', href: '/feedback', icon: MessageSquareWarning },
     ],
   },
   {
