@@ -383,6 +383,41 @@ class SourceListResponse(BaseModel):
     processing_info: Optional[Dict[str, Any]] = None
 
 
+class ImportJobItemResponse(BaseModel):
+    id: str
+    parent_item_id: Optional[str] = None
+    kind: Literal["file", "archive"]
+    status: str
+    sequence: int
+    name: str
+    display_name: str
+    file_path: str
+    source_id: Optional[str] = None
+    error_message: Optional[str] = None
+    created: Optional[str] = None
+    updated: Optional[str] = None
+
+
+class ImportJobResponse(BaseModel):
+    id: str
+    job_type: Literal["upload"]
+    status: str
+    notebooks: List[str]
+    transformations: List[str]
+    embed: bool
+    delete_source: bool
+    total_items: int
+    completed_items: int
+    failed_items: int
+    current_item: Optional[str] = None
+    error_message: Optional[str] = None
+    command_id: Optional[str] = None
+    created: str
+    updated: str
+    completed_at: Optional[str] = None
+    items: List[ImportJobItemResponse] = Field(default_factory=list)
+
+
 # Context API models
 class ContextConfig(BaseModel):
     sources: Dict[str, str] = Field(

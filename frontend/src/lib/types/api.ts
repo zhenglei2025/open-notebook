@@ -52,6 +52,41 @@ export interface SourceStatusResponse {
   command_id?: string
 }
 
+export interface ImportJobItemResponse {
+  id: string
+  parent_item_id?: string | null
+  kind: 'file' | 'archive'
+  status: string
+  sequence: number
+  name: string
+  display_name: string
+  file_path: string
+  source_id?: string | null
+  error_message?: string | null
+  created?: string | null
+  updated?: string | null
+}
+
+export interface ImportJobResponse {
+  id: string
+  job_type: 'upload'
+  status: string
+  notebooks: string[]
+  transformations: string[]
+  embed: boolean
+  delete_source: boolean
+  total_items: number
+  completed_items: number
+  failed_items: number
+  current_item?: string | null
+  error_message?: string | null
+  command_id?: string | null
+  created: string
+  updated: string
+  completed_at?: string | null
+  items: ImportJobItemResponse[]
+}
+
 export interface SettingsResponse {
   default_content_processing_engine_doc?: string
   default_content_processing_engine_url?: string

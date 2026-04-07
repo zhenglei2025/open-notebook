@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -19,13 +20,13 @@ import { SourceTypeStep, parseAndValidateUrls } from './steps/SourceTypeStep'
 import { NotebooksStep } from './steps/NotebooksStep'
 import { ProcessingStep } from './steps/ProcessingStep'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { useCreateImportJob, useImportJob } from '@/lib/hooks/use-imports'
 import { useTransformations } from '@/lib/hooks/use-transformations'
 import { useCreateSource } from '@/lib/hooks/use-sources'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useSettings } from '@/lib/hooks/use-settings'
-import { CreateSourceRequest } from '@/lib/types/api'
+import { CreateSourceRequest, ImportJobResponse } from '@/lib/types/api'
 import { useTranslation } from '@/lib/hooks/use-translation'
-
-const MAX_BATCH_SIZE = 50
 
 const createSourceSchema = z.object({
   type: z.enum(['link', 'upload', 'text']),
@@ -91,6 +92,7 @@ export function AddSourceDialog({
   defaultNotebookId
 }: AddSourceDialogProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
 
   const WIZARD_STEPS: readonly WizardStep[] = [
     { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
@@ -110,15 +112,20 @@ export function AddSourceDialog({
   // Batch-specific state
   const [urlValidationErrors, setUrlValidationErrors] = useState<{ url: string; line: number }[]>([])
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null)
+  const [activeImportJobId, setActiveImportJobId] = useState<string | null>(null)
+  const handledImportTerminalStateRef = useRef<string | null>(null)
+  const closeDialogRef = useRef<() => void>(() => undefined)
 
   // Cleanup timeouts to prevent memory leaks
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // API hooks
+  const createImportJob = useCreateImportJob()
   const createSource = useCreateSource()
   const { data: notebooks = [], isLoading: notebooksLoading } = useNotebooks()
   const { data: transformations = [], isLoading: transformationsLoading } = useTransformations()
   const { data: settings } = useSettings()
+  const { data: importJob } = useImportJob(activeImportJobId, processing && !!activeImportJobId)
 
   // Form setup
   const {
@@ -179,7 +186,7 @@ export function AddSourceDialog({
   const watchedTitle = watch('title')
 
   // Batch mode detection
-  const { isBatchMode, itemCount, parsedUrls, parsedFiles } = useMemo(() => {
+  const { isBatchMode, parsedUrls, parsedFiles } = useMemo(() => {
     let urlCount = 0
     let fileCount = 0
     let parsedUrls: string[] = []
@@ -200,21 +207,14 @@ export function AddSourceDialog({
     }
 
     const isBatchMode = urlCount > 1 || fileCount > 1
-    const itemCount = selectedType === 'link' ? urlCount : fileCount
-
-    return { isBatchMode, itemCount, parsedUrls, parsedFiles }
+    return { isBatchMode, parsedUrls, parsedFiles }
   }, [selectedType, watchedUrl, watchedFile])
-
-  // Check for batch size limit
-  const isOverLimit = itemCount > MAX_BATCH_SIZE
 
   // Step validation - now reactive with watched values
   const isStepValid = (step: number): boolean => {
     switch (step) {
       case 1:
         if (!selectedType) return false
-        // Check batch size limit
-        if (isOverLimit) return false
         // Check for URL validation errors
         if (urlValidationErrors.length > 0) return false
 
@@ -231,7 +231,7 @@ export function AddSourceDialog({
         }
         if (selectedType === 'upload') {
           if (watchedFile instanceof FileList) {
-            return watchedFile.length > 0 && watchedFile.length <= MAX_BATCH_SIZE
+            return watchedFile.length > 0
           }
           return !!watchedFile
         }
@@ -321,6 +321,16 @@ export function AddSourceDialog({
     await createSource.mutateAsync(createRequest)
   }
 
+  const submitImportJob = async (files: File[], data: CreateSourceFormData): Promise<ImportJobResponse> => {
+    return createImportJob.mutateAsync({
+      files,
+      notebooks: selectedNotebooks,
+      transformations: selectedTransformations,
+      embed: data.embed,
+      delete_source: false,
+    })
+  }
+
   // Batch submission
   const submitBatch = async (data: CreateSourceFormData): Promise<{ success: number; failed: number }> => {
     const results = { success: 0, failed: 0 }
@@ -389,7 +399,23 @@ export function AddSourceDialog({
     try {
       setProcessing(true)
 
-      if (isBatchMode) {
+      if (data.type === 'upload') {
+        const uploadFiles = data.file instanceof FileList
+          ? Array.from(data.file)
+          : data.file
+            ? [data.file as File]
+            : []
+
+        setProcessingStatus({ message: t.sources.processingFiles })
+        const job = await submitImportJob(uploadFiles, data)
+        setActiveImportJobId(job.id)
+        setBatchProgress({
+          total: Math.max(job.total_items, 1),
+          completed: job.completed_items,
+          failed: job.failed_items,
+          currentItem: job.current_item || undefined,
+        })
+      } else if (isBatchMode) {
         // Batch submission
         setProcessingStatus({ message: t.sources.processingFiles })
         const results = await submitBatch(data)
@@ -424,7 +450,7 @@ export function AddSourceDialog({
   }
 
   // Dialog management
-  const handleClose = () => {
+  function handleClose() {
     // Clear any pending timeouts
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -435,6 +461,8 @@ export function AddSourceDialog({
     setCurrentStep(1)
     setProcessing(false)
     setProcessingStatus(null)
+    setActiveImportJobId(null)
+    handledImportTerminalStateRef.current = null
     setSelectedNotebooks(defaultNotebookId ? [defaultNotebookId] : [])
     setUrlValidationErrors([])
     setBatchProgress(null)
@@ -451,6 +479,68 @@ export function AddSourceDialog({
 
     onOpenChange(false)
   }
+
+  closeDialogRef.current = handleClose
+
+  useEffect(() => {
+    if (!importJob) return
+
+    setBatchProgress({
+      total: Math.max(importJob.total_items, 1),
+      completed: importJob.completed_items,
+      failed: importJob.failed_items,
+      currentItem: importJob.current_item || undefined,
+    })
+
+    const statusMessage = (() => {
+      switch (importJob.status) {
+        case 'queued':
+          return t.sources.statusQueuedDesc
+        case 'extracting':
+          return t.sources.processingFiles
+        case 'running':
+          return t.sources.statusProcessingDesc
+        case 'completed':
+          return t.sources.statusCompletedDesc
+        case 'partial_failed':
+        case 'failed':
+          return importJob.error_message || t.sources.statusFailedDesc
+        default:
+          return t.common.processing
+      }
+    })()
+
+    setProcessingStatus({ message: statusMessage })
+
+    if (!['completed', 'partial_failed', 'failed'].includes(importJob.status)) {
+      return
+    }
+
+    const handledKey = `${importJob.id}:${importJob.status}`
+    if (handledImportTerminalStateRef.current === handledKey) {
+      return
+    }
+    handledImportTerminalStateRef.current = handledKey
+
+    queryClient.invalidateQueries({ queryKey: ['sources'] })
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
+
+    if (importJob.status === 'completed') {
+      toast.success(t.sources.batchSuccess.replace('{count}', importJob.completed_items.toString()))
+    } else if (importJob.status === 'partial_failed') {
+      toast.warning(
+        t.sources.batchPartial
+          .replace('{success}', importJob.completed_items.toString())
+          .replace('{failed}', importJob.failed_items.toString())
+      )
+    } else {
+      toast.error(importJob.error_message || t.sources.batchFailed.replace('{count}', importJob.failed_items.toString()))
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      closeDialogRef.current()
+    }, 800)
+  }, [importJob, queryClient, t])
 
   // Processing view
   if (processing) {
@@ -622,10 +712,10 @@ export function AddSourceDialog({
               {/* Show Done button on all steps, styled as primary */}
               <Button
                 type="submit"
-                disabled={!currentStepValid || createSource.isPending}
+                disabled={!currentStepValid || createSource.isPending || createImportJob.isPending}
                 className="min-w-[120px]"
               >
-                {createSource.isPending ? t.common.adding : t.common.done}
+                {createSource.isPending || createImportJob.isPending ? t.common.adding : t.common.done}
               </Button>
             </div>
           </div>
