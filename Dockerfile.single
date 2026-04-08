@@ -5,11 +5,13 @@ WORKDIR /app/frontend
 # Copy dependency files first to leverage cache
 COPY frontend/package.json frontend/package-lock.json ./
 ARG NPM_REGISTRY=https://registry.npmjs.org/
+ARG OPEN_NOTEBOOK_BASE_PATH=
 RUN npm config set registry ${NPM_REGISTRY}
 RUN npm ci
 
 # Copy the rest of the frontend source
 COPY frontend/ ./
+ENV OPEN_NOTEBOOK_BASE_PATH=${OPEN_NOTEBOOK_BASE_PATH}
 # Build the frontend
 RUN npm run build
 
@@ -18,40 +20,66 @@ FROM surrealdb/surrealdb:v2 AS surreal-binary
 
 # Stage 4: Backend Builder
 FROM python:3.12-slim-bookworm AS backend-builder
+ARG APT_DEBIAN_MIRROR=https://deb.debian.org/debian
+ARG APT_SECURITY_MIRROR=https://deb.debian.org/debian-security
+ARG PYPI_INDEX_URL=https://pypi.org/simple
+
+# Allow switching to faster mirrors without changing the Dockerfile again.
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" /etc/apt/sources.list; \
+    fi
+
 # Install build dependencies
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
+# Install uv from the configured Python index to avoid an extra registry pull.
+RUN PIP_INDEX_URL=${PYPI_INDEX_URL} python -m pip install --no-cache-dir uv
 WORKDIR /app
 
 # Set build optimization environment variables
 ENV UV_HTTP_TIMEOUT=120
+ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
 
 # Copy dependency files first
 COPY pyproject.toml uv.lock ./
 COPY open_notebook/__init__.py ./open_notebook/__init__.py
 # Install dependencies
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --default-index ${PYPI_INDEX_URL}
 
 # Stage 5: Runtime
 FROM python:3.12-slim-bookworm AS runtime
+ARG APT_DEBIAN_MIRROR=https://deb.debian.org/debian
+ARG APT_SECURITY_MIRROR=https://deb.debian.org/debian-security
+ARG PYPI_INDEX_URL=https://pypi.org/simple
+
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g; s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" /etc/apt/sources.list; \
+    fi
 
 # Install runtime dependencies
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libreoffice-writer \
     antiword \
     supervisor \
     curl \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install SurrealDB (copied from pinned v2 image to match docker-compose.yml)
 COPY --from=surreal-binary /surreal /usr/local/bin/surreal
 
-# Install uv (optional but helpful for some scripts)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Reuse the Node.js runtime from the build stage to avoid another network install.
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+
+# Install uv from the configured Python index.
+RUN PIP_INDEX_URL=${PYPI_INDEX_URL} python -m pip install --no-cache-dir uv
 
 WORKDIR /app
 

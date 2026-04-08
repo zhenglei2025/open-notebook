@@ -4,6 +4,7 @@
  */
 
 import { AppConfig, BackendConfigResponse } from '@/lib/types/config'
+import { withBasePath } from '@/lib/base-path'
 
 // Build timestamp for debugging - set at build time
 const BUILD_TIME = new Date().toISOString()
@@ -69,8 +70,9 @@ async function fetchConfig(): Promise<AppConfig> {
   // Note: Endpoint is at /config (not /api/config) to avoid reverse proxy conflicts
   let runtimeApiUrl: string | null = null
   try {
-    if (isDev) console.log('🔧 [Config] Attempting to fetch runtime config from /config endpoint...')
-    const runtimeResponse = await fetch('/config', {
+    const runtimeConfigUrl = withBasePath('/config')
+    if (isDev) console.log('🔧 [Config] Attempting to fetch runtime config from:', runtimeConfigUrl)
+    const runtimeResponse = await fetch(runtimeConfigUrl, {
       cache: 'no-store',
     })
     if (runtimeResponse.ok) {

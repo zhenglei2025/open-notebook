@@ -117,14 +117,19 @@ serversTransport:
 ## Environment Variables
 
 ```bash
-# Required for reverse proxy setups
+# Recommended for reverse proxy setups
 API_URL=https://your-domain.com
+
+# Optional: Serve the UI under a subdirectory like /tools/notebook
+# Build-time setting: rebuild the frontend image after changing it
+OPEN_NOTEBOOK_BASE_PATH=/tools/notebook
 
 # Optional: For multi-container deployments
 # INTERNAL_API_URL=http://api-service:5055
 ```
 
 **Important**: Set `API_URL` to your public URL (with https://).
+If you use a subdirectory, include it in `API_URL` and do not add `/api` at the end.
 
 **Note on HOSTNAME**: The Docker images set `HOSTNAME=0.0.0.0` by default, which ensures Next.js binds to all interfaces and is accessible from reverse proxies. You typically don't need to set this manually.
 
@@ -140,12 +145,7 @@ The frontend uses a three-tier priority system to determine the API URL:
 
 ### Auto-Detection Details
 
-When `API_URL` is not set, the Next.js frontend:
-- Analyzes the incoming HTTP request
-- Extracts the hostname from the `host` header
-- Respects the `X-Forwarded-Proto` header (for HTTPS behind reverse proxies)
-- Constructs the API URL as `{protocol}://{hostname}:5055`
-- Example: Request to `http://10.20.30.20:8502` → API URL becomes `http://10.20.30.20:5055`
+When `API_URL` is not set, the Next.js frontend defaults to same-origin relative requests and lets Next.js rewrites proxy `/api/*` to the FastAPI backend.
 
 **Why set API_URL explicitly?**
 - **Reliability**: Auto-detection can fail with complex proxy setups
@@ -154,6 +154,65 @@ When `API_URL` is not set, the Next.js frontend:
 - **Port mapping**: Avoids exposing port 5055 in the URL when using reverse proxy
 
 **Important**: Don't include `/api` at the end - the system adds this automatically!
+
+---
+
+## Serving From a Subdirectory
+
+If your company gateway gives you a URL like `https://portal.example.com/tools/notebook`, you must build the frontend with a base path.
+
+### What changes compared with direct root access?
+
+- Root deployment: the app lives at `/`
+- Subdirectory deployment: the app lives at `/tools/notebook`
+- Without a base path, the browser still requests `/_next/static/...`, which causes 404 errors under a subdirectory
+
+### Required settings
+
+```bash
+API_URL=https://portal.example.com/tools/notebook
+OPEN_NOTEBOOK_BASE_PATH=/tools/notebook
+```
+
+### Docker Compose build example
+
+```yaml
+services:
+  open_notebook_single:
+    build:
+      context: .
+      dockerfile: Dockerfile.single
+      args:
+        OPEN_NOTEBOOK_BASE_PATH: /tools/notebook
+    environment:
+      - API_URL=https://portal.example.com/tools/notebook
+```
+
+### Nginx example for a subdirectory
+
+```nginx
+location /tools/notebook/ {
+    proxy_pass http://open-notebook:8502/tools/notebook/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_cache_bypass $http_upgrade;
+}
+```
+
+### Important limitation
+
+One Next.js build normally has a single canonical base path. If you build with `OPEN_NOTEBOOK_BASE_PATH=/tools/notebook`, that build is meant to be accessed via `/tools/notebook`.
+
+If you also want the old root-style entry to keep working, use one of these patterns:
+
+- Keep the old direct domain as a separate root deployment
+- Add a reverse-proxy redirect from `/` to `/tools/notebook`
+- Maintain two frontend builds if you truly need both root and subdirectory as first-class URLs
 
 ---
 

@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { SourceDetailContent } from './SourceDetailContent'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { withBasePath } from '@/lib/base-path'
 
 interface SourceDialogProps {
   open: boolean
@@ -25,7 +26,7 @@ export function SourceDialog({ open, onOpenChange, sourceId }: SourceDialogProps
 
   const handleChatClick = () => {
     if (sourceIdWithPrefix) {
-      window.open(`/sources/${sourceIdWithPrefix}`, '_blank')
+      window.open(withBasePath(`/sources/${sourceIdWithPrefix}`), '_blank')
       // Modal stays open after opening chat
     }
   }

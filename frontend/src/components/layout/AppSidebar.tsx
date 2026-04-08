@@ -27,6 +27,7 @@ import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
 import { TranslationKeys } from '@/lib/locales'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { withBasePath } from '@/lib/base-path'
 import { Separator } from '@/components/ui/separator'
 import {
   Book,
@@ -131,7 +132,7 @@ export function AppSidebar() {
           {isCollapsed ? (
             <div className="relative flex items-center justify-center w-full">
               <Image
-                src="/logo.svg"
+                src={withBasePath('/logo.svg')}
                 alt="Open Notebook"
                 width={32}
                 height={32}
@@ -149,7 +150,7 @@ export function AppSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <Image src="/logo.svg" alt={t.common.appName} width={32} height={32} />
+                <Image src={withBasePath('/logo.svg')} alt={t.common.appName} width={32} height={32} />
                 <span className="text-base font-medium text-sidebar-foreground">
                   {t.common.appName}
                 </span>

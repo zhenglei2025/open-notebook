@@ -38,10 +38,12 @@ COPY . /app
 # Install frontend dependencies and build
 WORKDIR /app/frontend
 ARG NPM_REGISTRY=https://registry.npmjs.org/
+ARG OPEN_NOTEBOOK_BASE_PATH=
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm config set registry ${NPM_REGISTRY}
 RUN npm ci
 COPY frontend/ ./
+ENV OPEN_NOTEBOOK_BASE_PATH=${OPEN_NOTEBOOK_BASE_PATH}
 RUN npm run build
 
 # Return to app root
