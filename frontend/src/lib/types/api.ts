@@ -34,6 +34,7 @@ export interface SourceListResponse {
   file_available?: boolean
   // ADD: Async processing fields from Python API
   command_id?: string
+  embedding_command_id?: string
   status?: string
   processing_info?: Record<string, unknown>
 }
@@ -50,6 +51,7 @@ export interface SourceStatusResponse {
   message: string
   processing_info?: Record<string, unknown>
   command_id?: string
+  embedding_command_id?: string
 }
 
 export interface SettingsResponse {

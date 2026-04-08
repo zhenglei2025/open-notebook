@@ -1,12 +1,16 @@
+import asyncio
 import os
 import shutil
+import subprocess
 import tempfile
 import traceback
 import zipfile
+from pathlib import Path
 from typing import Any, Dict, List
 
 from content_core import extract_content
 from content_core.common import ProcessSourceState
+from content_core.common.exceptions import UnsupportedTypeException as ContentCoreUnsupportedTypeException
 from langgraph.graph import END, START, StateGraph
 from loguru import logger
 from typing_extensions import TypedDict
@@ -17,6 +21,8 @@ from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 
 _OFFICE_EXTENSIONS = {".docx", ".docm", ".xlsx", ".pptx"}
+_WORD_EXTENSIONS = {".doc", ".docx", ".docm"}
+_LEGACY_OFFICE_EXTENSIONS = {".doc", ".wps"}
 
 
 class SourceState(TypedDict):
@@ -122,6 +128,129 @@ def _extract_docx_raw(file_path: str) -> "str | None":
         return None
 
 
+def _word_extraction_error_message(file_path: str) -> str:
+    extension = os.path.splitext(file_path)[1].lower()
+    if extension == ".doc":
+        return (
+            "Word 抽取错误：旧版 .doc 文件自动转换失败，"
+            "请先转换为 .docx 后重试。"
+        )
+
+    if extension == ".wps":
+        return (
+            "WPS 抽取错误：WPS 文件自动转换失败，"
+            "请先转换为 .docx 或 PDF 后重试。"
+        )
+
+    return (
+        "Word 抽取错误：无法解析此 Word 文件，"
+        "请检查文件是否损坏，或转换为 .docx 后重试。"
+    )
+
+
+def _run_conversion_command(
+    command: list[str], *, timeout_seconds: int = 120
+) -> subprocess.CompletedProcess[str] | None:
+    executable = shutil.which(command[0])
+    if not executable:
+        return None
+
+    full_command = [executable, *command[1:]]
+    logger.info(f"[conversion] Running command: {' '.join(full_command)}")
+    return subprocess.run(
+        full_command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        timeout=timeout_seconds,
+        check=False,
+    )
+
+
+def _try_libreoffice_extract_text(file_path: str) -> str | None:
+    with tempfile.TemporaryDirectory(prefix="legacy-office-") as temp_dir:
+        for executable_name in ("soffice", "libreoffice"):
+            result = _run_conversion_command(
+                [
+                    executable_name,
+                    "--headless",
+                    "--convert-to",
+                    "txt:Text",
+                    "--outdir",
+                    temp_dir,
+                    file_path,
+                ]
+            )
+            if result is None:
+                continue
+
+            if result.returncode != 0:
+                logger.warning(
+                    f"[conversion] LibreOffice conversion failed for {file_path}: "
+                    f"{result.stderr.strip() or result.stdout.strip()}"
+                )
+                continue
+
+            converted_path = os.path.join(
+                temp_dir, f"{os.path.splitext(os.path.basename(file_path))[0]}.txt"
+            )
+            if not os.path.exists(converted_path):
+                logger.warning(
+                    f"[conversion] LibreOffice reported success but produced no txt "
+                    f"output for {file_path}"
+                )
+                continue
+
+            content = Path(converted_path).read_text(
+                encoding="utf-8", errors="ignore"
+            )
+            if content.strip():
+                logger.info(
+                    f"[conversion] LibreOffice extracted {len(content)} chars from "
+                    f"{os.path.basename(file_path)}"
+                )
+                return content
+
+    return None
+
+
+def _try_antiword_extract_text(file_path: str) -> str | None:
+    result = _run_conversion_command(["antiword", file_path], timeout_seconds=60)
+    if result is None:
+        return None
+
+    if result.returncode != 0:
+        logger.warning(
+            f"[conversion] antiword failed for {file_path}: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+        return None
+
+    content = result.stdout or ""
+    if content.strip():
+        logger.info(
+            f"[conversion] antiword extracted {len(content)} chars from "
+            f"{os.path.basename(file_path)}"
+        )
+        return content
+
+    return None
+
+
+def _extract_legacy_office_text(file_path: str) -> str | None:
+    extension = os.path.splitext(file_path)[1].lower()
+
+    content = _try_libreoffice_extract_text(file_path)
+    if content:
+        return content
+
+    if extension == ".doc":
+        return _try_antiword_extract_text(file_path)
+
+    return None
+
+
 async def content_process(state: SourceState) -> dict:
     logger.info("[content_process] Starting content processing")
     logger.info(f"[content_process] Source ID: {state.get('source_id')}")
@@ -175,8 +304,29 @@ async def content_process(state: SourceState) -> dict:
     except Exception as e:
         logger.warning(f"[content_process] extract_content failed: {type(e).__name__}: {e}")
 
+        is_word_file = bool(file_path and file_path.lower().endswith(tuple(_WORD_EXTENSIONS)))
+        is_legacy_office_file = bool(
+            file_path and file_path.lower().endswith(tuple(_LEGACY_OFFICE_EXTENSIONS))
+        )
+        if is_legacy_office_file and file_path:
+            logger.info(
+                "[content_process] Attempting legacy office conversion fallback..."
+            )
+            converted_text = await asyncio.to_thread(
+                _extract_legacy_office_text, file_path
+            )
+            if converted_text and converted_text.strip():
+                processed_state = ProcessSourceState(
+                    content=converted_text,
+                    title=os.path.splitext(os.path.basename(file_path))[0],
+                    file_path=file_path,
+                    identified_type="text/plain",
+                )
+            else:
+                raise ValueError(_word_extraction_error_message(file_path)) from e
+
         # Fallback: for .docx files, try raw XML extraction
-        if file_path and file_path.lower().endswith((".docx", ".docm")):
+        elif file_path and file_path.lower().endswith((".docx", ".docm")):
             logger.info("[content_process] Attempting raw DOCX extraction fallback...")
             raw_text = _extract_docx_raw(file_path)
             if raw_text:
@@ -191,7 +341,11 @@ async def content_process(state: SourceState) -> dict:
                 )
             else:
                 logger.error("[content_process] Raw fallback also failed")
-                raise
+                raise ValueError(_word_extraction_error_message(file_path)) from e
+        elif is_word_file and isinstance(
+            e, (UnicodeDecodeError, ContentCoreUnsupportedTypeException)
+        ):
+            raise ValueError(_word_extraction_error_message(file_path)) from e
         else:
             raise
 

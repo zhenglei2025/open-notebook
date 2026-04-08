@@ -34,7 +34,7 @@ from api.models import (
 from commands.source_commands import SourceProcessingInput
 from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, get_current_user_db, repo_query
-from open_notebook.domain.notebook import Notebook, Source
+from open_notebook.domain.notebook import Asset, Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError
 
@@ -43,6 +43,8 @@ router = APIRouter()
 ARCHIVE_IMPORT_FOLDER = "archive_imports"
 MAX_ARCHIVE_DEPTH = 8
 MAX_ARCHIVE_FILES = 1000
+ARCHIVE_QUEUE_RETRY_ATTEMPTS = 3
+ARCHIVE_QUEUE_RETRY_BASE_DELAY_SECONDS = 0.2
 _SKIP_ARCHIVE_FILENAMES = {".ds_store", "thumbs.db"}
 
 
@@ -140,6 +142,15 @@ def _is_supported_archive_member(path: Path) -> bool:
 
 def _archive_display_title(path: Path) -> str:
     return path.as_posix()
+
+
+def _is_retryable_transaction_conflict(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "read or write conflict" in message
+        or "failed transaction" in message
+        or "transaction can be retried" in message
+    )
 
 
 def _make_unique_path(path: Path) -> Path:
@@ -290,6 +301,68 @@ async def _submit_async_source_processing(
     return command_id
 
 
+async def _queue_archive_file_for_processing(
+    *,
+    extracted_file: ExtractedArchiveFile,
+    source_data: SourceCreate,
+    transformation_ids: list[str],
+) -> tuple[Source, str]:
+    last_error: Exception | None = None
+
+    for attempt in range(1, ARCHIVE_QUEUE_RETRY_ATTEMPTS + 1):
+        source: Source | None = None
+        try:
+            source = await _create_pending_source(
+                title=extracted_file.display_title,
+                notebook_ids=source_data.notebooks or [],
+            )
+            source.asset = Asset(file_path=extracted_file.file_path)
+            await source.save()
+            command_id = await _submit_async_source_processing(
+                source=source,
+                content_state={
+                    "file_path": extracted_file.file_path,
+                    "delete_source": source_data.delete_source,
+                    "title": extracted_file.display_title,
+                },
+                notebook_ids=source_data.notebooks or [],
+                transformation_ids=transformation_ids,
+                embed=source_data.embed,
+            )
+            return source, command_id
+        except Exception as e:
+            last_error = e
+
+            if source:
+                try:
+                    await source.delete()
+                except Exception as cleanup_error:
+                    logger.warning(
+                        f"Failed to clean up source for archive file "
+                        f"{extracted_file.display_title}: {cleanup_error}"
+                    )
+
+            is_retryable = _is_retryable_transaction_conflict(e)
+            if is_retryable and attempt < ARCHIVE_QUEUE_RETRY_ATTEMPTS:
+                delay = ARCHIVE_QUEUE_RETRY_BASE_DELAY_SECONDS * attempt
+                logger.warning(
+                    f"Retrying archive queue for {extracted_file.display_title} "
+                    f"after transaction conflict "
+                    f"(attempt {attempt}/{ARCHIVE_QUEUE_RETRY_ATTEMPTS}): {e}"
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            raise
+
+    if last_error:
+        raise last_error
+
+    raise RuntimeError(
+        f"Failed to queue archive file {extracted_file.display_title}"
+    )
+
+
 async def _run_sync_source_processing(
     *,
     source: Source,
@@ -342,22 +415,11 @@ async def _create_archive_response_async(
 
     try:
         for extracted_file in archive.files:
-            source = await _create_pending_source(
-                title=extracted_file.display_title,
-                notebook_ids=source_data.notebooks or [],
-            )
-
             try:
-                command_id = await _submit_async_source_processing(
-                    source=source,
-                    content_state={
-                        "file_path": extracted_file.file_path,
-                        "delete_source": source_data.delete_source,
-                        "title": extracted_file.display_title,
-                    },
-                    notebook_ids=source_data.notebooks or [],
+                source, command_id = await _queue_archive_file_for_processing(
+                    extracted_file=extracted_file,
+                    source_data=source_data,
                     transformation_ids=transformation_ids,
-                    embed=source_data.embed,
                 )
                 queued_sources.append((source, command_id))
             except Exception as e:
@@ -365,7 +427,6 @@ async def _create_archive_response_async(
                 logger.error(
                     f"Failed to queue archive file {extracted_file.display_title}: {e}"
                 )
-                await source.delete()
                 _delete_path_safely(extracted_file.file_path)
 
         if not queued_sources:
@@ -611,7 +672,7 @@ async def get_sources(
             # default DB (managed by surreal_commands), not in user DBs.
             # The frontend uses /sources/{id}/status API to get command status.
             query = f"""
-                SELECT id, asset, created, title, updated, topics, command,
+                SELECT id, asset, created, title, updated, topics, command, embedding_command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM (select value in from reference where out=$notebook_id)
@@ -629,7 +690,7 @@ async def get_sources(
         else:
             # Query all sources
             query = f"""
-                SELECT id, asset, created, title, updated, topics, command,
+                SELECT id, asset, created, title, updated, topics, command, embedding_command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
@@ -643,8 +704,10 @@ async def get_sources(
         response_list = []
         for row in result:
             command = row.get("command")
+            embedding_command = row.get("embedding_command")
             # command is a raw record ID string (e.g. "command:xxx"), not a resolved object
             command_id = str(command) if command else None
+            embedding_command_id = str(embedding_command) if embedding_command else None
 
             response_list.append(
                 SourceListResponse(
@@ -666,6 +729,7 @@ async def get_sources(
                     updated=str(row["updated"]),
                     # Pass raw command_id; status is fetched via independent API
                     command_id=command_id,
+                    embedding_command_id=embedding_command_id,
                     status=None,
                     processing_info=None,
                 )
@@ -1034,6 +1098,94 @@ def _is_source_file_available(source: Source) -> Optional[bool]:
     return os.path.exists(resolved_path)
 
 
+async def _get_effective_source_status(
+    source: Source,
+) -> tuple[Optional[str], Optional[dict[str, Any]], Optional[str]]:
+    status = None
+    processing_info = None
+
+    if source.command:
+        try:
+            status = await source.get_status()
+            processing_info = await source.get_processing_progress()
+        except Exception as e:
+            logger.warning(f"Failed to get status for source {source.id}: {e}")
+            status = "unknown"
+
+    embedding_status = None
+    embedding_info = None
+    if source.embedding_command:
+        try:
+            embedding_status = await source.get_embedding_status()
+            embedding_info = await source.get_embedding_progress()
+        except Exception as e:
+            logger.warning(
+                f"Failed to get embedding status for source {source.id}: {e}"
+            )
+            embedding_status = "unknown"
+
+    embedded_chunks = await source.get_embedded_chunks()
+    is_embedded = embedded_chunks > 0
+
+    merged_info: dict[str, Any] | None = None
+    if isinstance(processing_info, dict):
+        merged_info = dict(processing_info)
+    elif processing_info is not None:
+        merged_info = {"result": processing_info}
+
+    if embedding_status or embedding_info or source.embedding_command:
+        if merged_info is None:
+            merged_info = {}
+        merged_info["embedding_status"] = embedding_status
+        merged_info["embedding_command_id"] = (
+            str(source.embedding_command) if source.embedding_command else None
+        )
+        if isinstance(embedding_info, dict):
+            merged_info["embedding_started_at"] = embedding_info.get("started_at")
+            merged_info["embedding_completed_at"] = embedding_info.get("completed_at")
+            merged_info["embedding_error"] = embedding_info.get("error")
+
+    effective_status = status
+    if status == "completed":
+        if is_embedded:
+            effective_status = "completed"
+        elif embedding_status in {"queued", "running"}:
+            effective_status = "embedding"
+        elif embedding_status in {"failed", "unknown"}:
+            effective_status = "failed"
+        elif embedding_status == "completed" and not is_embedded:
+            effective_status = "failed"
+
+    message = None
+    if effective_status == "completed":
+        message = "Source processing completed successfully"
+    elif effective_status == "failed":
+        if merged_info and merged_info.get("embedding_error") and status == "completed":
+            message = str(merged_info["embedding_error"])
+        elif merged_info and merged_info.get("error"):
+            message = str(merged_info["error"])
+        elif status == "completed" and embedding_status == "completed" and not is_embedded:
+            message = "Source embedding completed but no embeddings were stored"
+        elif status == "completed" and embedding_status in {"failed", "unknown"}:
+            message = "Source embedding failed"
+        else:
+            message = "Source processing failed"
+    elif effective_status == "running":
+        message = "Source processing in progress"
+    elif effective_status == "queued":
+        message = "Source processing queued"
+    elif effective_status == "embedding":
+        message = (
+            "Source embedding queued"
+            if embedding_status == "queued"
+            else "Source embedding in progress"
+        )
+    elif effective_status == "unknown":
+        message = "Source processing status unknown"
+
+    return effective_status, merged_info, message
+
+
 @router.get("/sources/{source_id}", response_model=SourceResponse)
 async def get_source(source_id: str):
     """Get a specific source by ID."""
@@ -1042,18 +1194,8 @@ async def get_source(source_id: str):
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        # Get status information if command exists
-        status = None
-        processing_info = None
-        if source.command:
-            try:
-                status = await source.get_status()
-                processing_info = await source.get_processing_progress()
-            except Exception as e:
-                logger.warning(f"Failed to get status for source {source_id}: {e}")
-                status = "unknown"
-
         embedded_chunks = await source.get_embedded_chunks()
+        status, processing_info, _ = await _get_effective_source_status(source)
 
         # Get associated notebooks
         notebooks_query = await repo_query(
@@ -1082,6 +1224,9 @@ async def get_source(source_id: str):
             updated=str(source.updated),
             # Status fields
             command_id=str(source.command) if source.command else None,
+            embedding_command_id=str(source.embedding_command)
+            if source.embedding_command
+            else None,
             status=status,
             processing_info=processing_info,
             # Notebook associations
@@ -1133,39 +1278,27 @@ async def get_source_status(source_id: str):
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        # Check if this is a legacy source (no command)
-        if not source.command:
+        # Check if this is a legacy source (no async processing or embedding command)
+        if not source.command and not source.embedding_command:
             return SourceStatusResponse(
                 status=None,
                 message="Legacy source (completed before async processing)",
                 processing_info=None,
                 command_id=None,
+                embedding_command_id=None,
             )
 
-        # Get command status and processing info
         try:
-            status = await source.get_status()
-            processing_info = await source.get_processing_progress()
-
-            # Generate descriptive message based on status
-            if status == "completed":
-                message = "Source processing completed successfully"
-            elif status == "failed":
-                message = "Source processing failed"
-            elif status == "running":
-                message = "Source processing in progress"
-            elif status == "queued":
-                message = "Source processing queued"
-            elif status == "unknown":
-                message = "Source processing status unknown"
-            else:
-                message = f"Source processing status: {status}"
+            status, processing_info, message = await _get_effective_source_status(source)
 
             return SourceStatusResponse(
                 status=status,
-                message=message,
+                message=message or f"Source processing status: {status}",
                 processing_info=processing_info,
                 command_id=str(source.command) if source.command else None,
+                embedding_command_id=str(source.embedding_command)
+                if source.embedding_command
+                else None,
             )
 
         except Exception as e:
@@ -1175,6 +1308,9 @@ async def get_source_status(source_id: str):
                 message="Failed to retrieve processing status",
                 processing_info=None,
                 command_id=str(source.command) if source.command else None,
+                embedding_command_id=str(source.embedding_command)
+                if source.embedding_command
+                else None,
             )
 
     except HTTPException:
@@ -1252,10 +1388,13 @@ async def retry_source_processing(source_id: str):
                 )
                 # Continue with retry if we can't check status
 
-        # Get notebooks that this source belongs to
-        query = "SELECT notebook FROM reference WHERE source = $source_id"
-        references = await repo_query(query, {"source_id": source_id})
-        notebook_ids = [str(ref["notebook"]) for ref in references]
+        # Get notebooks that this source belongs to.
+        # Reference edges are stored as in=source, out=notebook.
+        notebook_ids = await repo_query(
+            "SELECT VALUE out FROM reference WHERE in = $source_id",
+            {"source_id": ensure_record_id(source.id or source_id)},
+        )
+        notebook_ids = [str(notebook_id) for notebook_id in notebook_ids or []]
 
         if not notebook_ids:
             raise HTTPException(

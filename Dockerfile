@@ -54,6 +54,8 @@ FROM python:3.12-slim-bookworm AS runtime
 # Add Node.js 20.x LTS for running frontend
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libreoffice-writer \
+    antiword \
     supervisor \
     curl \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

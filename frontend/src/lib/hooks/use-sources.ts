@@ -262,7 +262,7 @@ export function useSourceStatus(sourceId: string, enabled = true) {
       // Auto-refresh every 2 seconds if processing
       // The query.state.data contains the SourceStatusResponse
       const data = query.state.data as SourceStatusResponse | undefined
-      if (data?.status === 'running' || data?.status === 'queued' || data?.status === 'new') {
+      if (data?.status === 'running' || data?.status === 'queued' || data?.status === 'new' || data?.status === 'embedding') {
         return 2000
       }
       // No auto-refresh if completed, failed, or unknown

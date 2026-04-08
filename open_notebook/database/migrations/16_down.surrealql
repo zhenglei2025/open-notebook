@@ -1,0 +1,3 @@
+-- Rollback Migration 16: Remove embedding command references from sources
+
+REMOVE FIELD embedding_command ON source;

@@ -39,6 +39,8 @@ FROM python:3.12-slim-bookworm AS runtime
 # Install runtime dependencies
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     ffmpeg \
+    libreoffice-writer \
+    antiword \
     supervisor \
     curl \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

@@ -136,14 +136,12 @@ export function SourceCard({
   // Track processing state to continue polling until we detect completion
   const [wasProcessing, setWasProcessing] = useState(false)
 
-  // Track if we're in the embedding phase (command done, but no embeddings yet)
-  const [isEmbeddingPhase, setIsEmbeddingPhase] = useState(false)
-
   const shouldFetchStatus = !!sourceWithStatus.command_id ||
+    !!sourceWithStatus.embedding_command_id ||
     sourceWithStatus.status === 'new' ||
     sourceWithStatus.status === 'queued' ||
     sourceWithStatus.status === 'running' ||
-    isEmbeddingPhase || // Keep polling during embedding phase
+    sourceWithStatus.status === 'embedding' ||
     wasProcessing // Keep polling if we were processing to catch the completion
 
   const { data: statusData, isLoading: statusLoading } = useSourceStatus(
@@ -160,18 +158,12 @@ export function SourceCard({
       ? 'failed'  // Stale or lost command — treat as failed so user can retry
       : (sourceWithStatus.command_id ? 'new' : 'completed')
 
-  // If command completed but source is not yet embedded, show embedding status
-  if (currentStatus === 'completed' && !source.embedded && (wasProcessing || isEmbeddingPhase || !!sourceWithStatus.command_id)) {
-    currentStatus = 'embedding'
-  }
-
-
   // Track processing state and detect completion
   useEffect(() => {
     const currentStatusFromData = statusData?.status || sourceWithStatus.status
 
     // If we're currently processing, mark that we were processing
-    if (currentStatusFromData === 'new' || currentStatusFromData === 'running' || currentStatusFromData === 'queued') {
+    if (currentStatusFromData === 'new' || currentStatusFromData === 'running' || currentStatusFromData === 'queued' || currentStatusFromData === 'embedding') {
       setWasProcessing(true)
     }
 
@@ -185,35 +177,11 @@ export function SourceCard({
 
     if (needsRefresh) {
       setWasProcessing(false) // Stop polling
-
-      // Check if we need to enter embedding phase
-      if (currentStatusFromData === 'completed' && !source.embedded) {
-        setIsEmbeddingPhase(true)
-        // Refresh to get updated source data (embedded status)
-        if (onRefresh) {
-          setTimeout(() => onRefresh(), 2000)
-        }
-      } else {
-        if (onRefresh) {
-          setTimeout(() => onRefresh(), 500)
-        }
-      }
-    }
-
-    // During embedding phase, keep refreshing until embedded becomes true
-    if (isEmbeddingPhase && source.embedded) {
-      setIsEmbeddingPhase(false)
       if (onRefresh) {
         setTimeout(() => onRefresh(), 500)
       }
-    } else if (isEmbeddingPhase && !source.embedded) {
-      // Keep polling by triggering refresh periodically
-      const timer = setTimeout(() => {
-        if (onRefresh) onRefresh()
-      }, 3000)
-      return () => clearTimeout(timer)
     }
-  }, [statusData, sourceWithStatus.status, wasProcessing, onRefresh, source.id, sourceWithStatus.command_id, source.title, source.embedded, isEmbeddingPhase])
+  }, [statusData, sourceWithStatus.status, wasProcessing, onRefresh, source.id, sourceWithStatus.command_id, source.title, source.embedded])
 
   const statusConfig = statusConfigMap[currentStatus] || statusConfigMap.completed
   const StatusIcon = statusConfig.icon

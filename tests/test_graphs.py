@@ -8,8 +8,13 @@ without heavy mocking of the actual processing logic.
 from datetime import datetime
 
 import pytest
+from content_core.common.exceptions import UnsupportedTypeException
 
 from open_notebook.graphs.prompt import PatternChainState, graph
+from open_notebook.graphs.source import (
+    _word_extraction_error_message,
+    content_process,
+)
 from open_notebook.graphs.tools import get_current_timestamp
 from open_notebook.graphs.transformation import (
     TransformationState,
@@ -236,6 +241,126 @@ class TestDeepResearchContextExpansion:
         # Verify it can be parsed back
         parsed = ContextExpansionResult(**json_data)
         assert parsed == result
+
+
+class TestSourceContentProcess:
+    def test_word_extraction_error_message_for_legacy_doc(self):
+        message = _word_extraction_error_message("/tmp/example.doc")
+        assert "Word 抽取错误" in message
+        assert ".docx" in message
+
+    @pytest.mark.asyncio
+    async def test_content_process_uses_conversion_fallback_for_legacy_doc(
+        self, monkeypatch
+    ):
+        async def fake_extract_content(_content_state):
+            raise UnsupportedTypeException("unsupported legacy doc")
+
+        async def fake_get_content_settings():
+            return {}
+
+        def fake_extract_legacy_office_text(_file_path: str):
+            return "converted legacy doc text"
+
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.extract_content",
+            fake_extract_content,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._get_content_settings",
+            fake_get_content_settings,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._extract_legacy_office_text",
+            fake_extract_legacy_office_text,
+        )
+
+        state = {
+            "content_state": {"file_path": "/tmp/example.doc"},
+            "source_id": "source:test",
+            "notebook_ids": [],
+            "apply_transformations": [],
+            "embed": False,
+        }
+
+        result = await content_process(state)
+        assert result["content_state"].content == "converted legacy doc text"
+        assert result["content_state"].file_path == "/tmp/example.doc"
+
+    @pytest.mark.asyncio
+    async def test_content_process_fails_fast_when_legacy_doc_conversion_fails(
+        self, monkeypatch
+    ):
+        async def fake_extract_content(_content_state):
+            raise UnsupportedTypeException("unsupported legacy doc")
+
+        async def fake_get_content_settings():
+            return {}
+
+        def fake_extract_legacy_office_text(_file_path: str):
+            return None
+
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.extract_content",
+            fake_extract_content,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._get_content_settings",
+            fake_get_content_settings,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._extract_legacy_office_text",
+            fake_extract_legacy_office_text,
+        )
+
+        state = {
+            "content_state": {"file_path": "/tmp/example.doc"},
+            "source_id": "source:test",
+            "notebook_ids": [],
+            "apply_transformations": [],
+            "embed": False,
+        }
+
+        with pytest.raises(ValueError, match="Word 抽取错误"):
+            await content_process(state)
+
+    @pytest.mark.asyncio
+    async def test_content_process_uses_conversion_fallback_for_wps(
+        self, monkeypatch
+    ):
+        async def fake_extract_content(_content_state):
+            raise UnsupportedTypeException("unsupported wps")
+
+        async def fake_get_content_settings():
+            return {}
+
+        def fake_extract_legacy_office_text(_file_path: str):
+            return "converted wps text"
+
+        monkeypatch.setattr(
+            "open_notebook.graphs.source.extract_content",
+            fake_extract_content,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._get_content_settings",
+            fake_get_content_settings,
+        )
+        monkeypatch.setattr(
+            "open_notebook.graphs.source._extract_legacy_office_text",
+            fake_extract_legacy_office_text,
+        )
+
+        state = {
+            "content_state": {"file_path": "/tmp/example.wps"},
+            "source_id": "source:test",
+            "notebook_ids": [],
+            "apply_transformations": [],
+            "embed": False,
+        }
+
+        result = await content_process(state)
+        assert result["content_state"].content == "converted wps text"
+        assert result["content_state"].file_path == "/tmp/example.wps"
 
 
 if __name__ == "__main__":

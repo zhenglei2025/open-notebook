@@ -1,0 +1,3 @@
+-- Migration 16: Persist embedding command references on sources
+
+DEFINE FIELD embedding_command ON source TYPE option<record<command>>;

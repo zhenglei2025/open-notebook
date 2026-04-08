@@ -51,10 +51,10 @@ class SourceProcessingOutput(CommandOutput):
     "process_source",
     app="open_notebook",
     retry={
-        "max_attempts": 15,  # Handle deep queues (workaround for SurrealDB v2 transaction conflicts)
+        "max_attempts": 3,  # Enough to smooth transient DB conflicts without stalling the UI
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
-        "wait_max": 120,  # Allow queue to drain
+        "wait_max": 30,
         "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
         "retry_log_level": "debug",  # Avoid log noise during transaction conflicts
     },
@@ -99,6 +99,7 @@ async def process_source_command(
             if input_data.execution_context
             else None
         )
+        source.embedding_command = None
         await source.save()
 
         logger.info(f"Updated source {source.id} with command reference")

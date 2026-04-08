@@ -296,11 +296,22 @@ class Source(ObjectModel):
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands processing job"
     )
+    embedding_command: Optional[Union[str, RecordID]] = Field(
+        default=None, description="Link to surreal-commands embedding job"
+    )
 
     @field_validator("command", mode="before")
     @classmethod
     def parse_command(cls, value):
         """Parse command field to ensure RecordID format"""
+        if isinstance(value, str) and value:
+            return ensure_record_id(value)
+        return value
+
+    @field_validator("embedding_command", mode="before")
+    @classmethod
+    def parse_embedding_command(cls, value):
+        """Parse embedding_command field to ensure RecordID format"""
         if isinstance(value, str) and value:
             return ensure_record_id(value)
         return value
@@ -317,45 +328,65 @@ class Source(ObjectModel):
 
     async def get_status(self) -> Optional[str]:
         """Get the processing status of the associated command"""
-        if not self.command:
-            return None
-
-        try:
-            from surreal_commands import get_command_status
-
-            status = await get_command_status(str(self.command))
-            return status.status if status else "unknown"
-        except Exception as e:
-            logger.warning(f"Failed to get command status for {self.command}: {e}")
-            return "unknown"
+        return await self._get_command_status(self.command)
 
     async def get_processing_progress(self) -> Optional[Dict[str, Any]]:
         """Get detailed processing information for the associated command"""
-        if not self.command:
+        return await self._get_command_progress(self.command)
+
+    async def get_embedding_status(self) -> Optional[str]:
+        """Get the embedding status of the associated command"""
+        return await self._get_command_status(self.embedding_command)
+
+    async def get_embedding_progress(self) -> Optional[Dict[str, Any]]:
+        """Get detailed embedding information for the associated command"""
+        return await self._get_command_progress(self.embedding_command)
+
+    async def _get_command_status(
+        self, command_ref: Optional[Union[str, RecordID]]
+    ) -> Optional[str]:
+        if not command_ref:
             return None
 
         try:
             from surreal_commands import get_command_status
 
-            status_result = await get_command_status(str(self.command))
+            status = await get_command_status(str(command_ref))
+            return status.status if status else "unknown"
+        except Exception as e:
+            logger.warning(f"Failed to get command status for {command_ref}: {e}")
+            return "unknown"
+
+    async def _get_command_progress(
+        self, command_ref: Optional[Union[str, RecordID]]
+    ) -> Optional[Dict[str, Any]]:
+        if not command_ref:
+            return None
+
+        try:
+            from surreal_commands import get_command_status
+
+            status_result = await get_command_status(str(command_ref))
             if not status_result:
                 return None
 
-            # Extract execution metadata if available
             result = getattr(status_result, "result", None)
             execution_metadata = (
                 result.get("execution_metadata", {}) if isinstance(result, dict) else {}
             )
+            error_message = getattr(status_result, "error_message", None)
+            if not error_message and isinstance(result, dict):
+                error_message = result.get("error_message")
 
             return {
                 "status": status_result.status,
                 "started_at": execution_metadata.get("started_at"),
                 "completed_at": execution_metadata.get("completed_at"),
-                "error": getattr(status_result, "error_message", None),
+                "error": error_message,
                 "result": result,
             }
         except Exception as e:
-            logger.warning(f"Failed to get command progress for {self.command}: {e}")
+            logger.warning(f"Failed to get command progress for {command_ref}: {e}")
             return None
 
     async def get_context(
@@ -447,6 +478,8 @@ class Source(ObjectModel):
             )
 
             command_id_str = str(command_id)
+            self.embedding_command = ensure_record_id(command_id_str)
+            await self.save()
             logger.info(
                 f"Embed source job submitted for source {self.id}: "
                 f"command_id={command_id_str}"
@@ -518,6 +551,8 @@ class Source(ObjectModel):
         # Ensure command field is RecordID format if not None
         if data.get("command") is not None:
             data["command"] = ensure_record_id(data["command"])
+        if data.get("embedding_command") is not None:
+            data["embedding_command"] = ensure_record_id(data["embedding_command"])
 
         return data
 

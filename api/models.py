@@ -360,6 +360,7 @@ class SourceResponse(BaseModel):
     updated: str
     # New fields for async processing
     command_id: Optional[str] = None
+    embedding_command_id: Optional[str] = None
     status: Optional[str] = None
     processing_info: Optional[Dict] = None
     # Notebook associations
@@ -379,6 +380,7 @@ class SourceListResponse(BaseModel):
     file_available: Optional[bool] = None
     # Status fields for async processing
     command_id: Optional[str] = None
+    embedding_command_id: Optional[str] = None
     status: Optional[str] = None
     processing_info: Optional[Dict[str, Any]] = None
 
@@ -448,6 +450,9 @@ class SourceStatusResponse(BaseModel):
         None, description="Detailed processing information"
     )
     command_id: Optional[str] = Field(None, description="Command ID if available")
+    embedding_command_id: Optional[str] = Field(
+        None, description="Embedding command ID if available"
+    )
 
 
 # Error response
