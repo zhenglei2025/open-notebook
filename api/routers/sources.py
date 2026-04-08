@@ -1448,7 +1448,7 @@ async def retry_source_processing(source_id: str):
             )
 
             # Update source with new command ID
-            source.command = ensure_record_id(f"command:{command_id}")
+            source.command = ensure_record_id(command_id)
             await source.save()
 
             # Get current embedded chunks count

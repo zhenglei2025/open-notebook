@@ -342,6 +342,20 @@ class Source(ObjectModel):
         """Get detailed embedding information for the associated command"""
         return await self._get_command_progress(self.embedding_command)
 
+    @staticmethod
+    def _normalize_command_status(status: Any) -> Optional[str]:
+        if status is None:
+            return None
+
+        value = getattr(status, "value", status)
+        if isinstance(value, str):
+            normalized = value.strip()
+            if "." in normalized:
+                normalized = normalized.rsplit(".", 1)[-1]
+            return normalized.lower()
+
+        return str(value).strip().lower()
+
     async def _get_command_status(
         self, command_ref: Optional[Union[str, RecordID]]
     ) -> Optional[str]:
@@ -352,7 +366,7 @@ class Source(ObjectModel):
             from surreal_commands import get_command_status
 
             status = await get_command_status(str(command_ref))
-            return status.status if status else "unknown"
+            return self._normalize_command_status(status.status) if status else "unknown"
         except Exception as e:
             logger.warning(f"Failed to get command status for {command_ref}: {e}")
             return "unknown"
@@ -379,7 +393,7 @@ class Source(ObjectModel):
                 error_message = result.get("error_message")
 
             return {
-                "status": status_result.status,
+                "status": self._normalize_command_status(status_result.status),
                 "started_at": execution_metadata.get("started_at"),
                 "completed_at": execution_metadata.get("completed_at"),
                 "error": error_message,

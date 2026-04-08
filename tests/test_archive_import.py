@@ -341,7 +341,7 @@ class TestArchiveImport:
             return ["notebook:abc"]
 
         async def fake_submit_command_job(*args, **kwargs):
-            return "cmd123"
+            return "command:cmd123"
 
         monkeypatch.setattr(sources.Source, "get", fake_get)
         monkeypatch.setattr(sources, "repo_query", fake_repo_query)
@@ -354,7 +354,8 @@ class TestArchiveImport:
         response = await sources.retry_source_processing("source:test")
 
         assert response.status == "queued"
-        assert response.command_id == "cmd123"
+        assert response.command_id == "command:cmd123"
+        assert str(fake_source.command) == "command:cmd123"
 
     @pytest.mark.asyncio
     async def test_effective_source_status_reports_embedding_in_progress(self):
@@ -419,3 +420,14 @@ class TestArchiveImport:
         assert status == "failed"
         assert processing_info["embedding_error"] == "Embedding provider timed out"
         assert message == "Embedding provider timed out"
+
+    def test_source_normalizes_enum_like_command_status_strings(self):
+        source = sources.Source()
+
+        assert source._normalize_command_status("CommandStatus.NEW") == "new"
+        assert source._normalize_command_status("queued") == "queued"
+
+        class FakeStatus:
+            value = "CommandStatus.RUNNING"
+
+        assert source._normalize_command_status(FakeStatus()) == "running"
