@@ -132,6 +132,7 @@ export function ChatPanel({
   const [deepResearchQuery, setDeepResearchQuery] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const eventsCursorRef = useRef(0)
+  const preserveDeepResearchOnSessionChangeRef = useRef(false)
 
   // Stop polling helper
   const stopPolling = useCallback(() => {
@@ -211,6 +212,11 @@ export function ChatPanel({
   // Check for active job on mount or session change
   useEffect(() => {
     if (!notebookId) return
+
+    if (preserveDeepResearchOnSessionChangeRef.current) {
+      preserveDeepResearchOnSessionChangeRef.current = false
+      return
+    }
 
     // Reset deep research state for new session
     stopPolling()
@@ -293,6 +299,7 @@ export function ChatPanel({
     setDeepResearchReport(null)
     setDeepResearchError(null)
     eventsCursorRef.current = 0
+    preserveDeepResearchOnSessionChangeRef.current = true
 
     try {
       // Ensure a session exists so the backend can save the report to chat history
@@ -315,6 +322,7 @@ export function ChatPanel({
       // Reset mode so chat panel returns to normal state
       setDeepResearchMode(false)
       setQuickResearchMode(false)
+      preserveDeepResearchOnSessionChangeRef.current = false
       toast.error(msg)
     }
   }, [modelOverride, notebookId, currentSessionId, startPolling, deepResearchReport, deepResearchQuery, onAddLocalMessages, onEnsureSession, quickResearchMode])
