@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getBasePath, withBasePath } from '@/lib/base-path'
+import { withBasePath } from '@/lib/base-path'
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const basePath = getBasePath()
 
-  // Redirect root to notebooks
-  if (pathname === '/' || (basePath && (pathname === basePath || pathname === `${basePath}/`))) {
+  // Redirect only the bare root path so IP-based access can enter the app
+  // without creating loops for the actual base path entrypoint.
+  if (pathname === '/') {
     const url = request.nextUrl.clone()
     url.pathname = withBasePath('/notebooks')
     return NextResponse.redirect(url)

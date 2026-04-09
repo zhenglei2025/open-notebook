@@ -22,6 +22,9 @@ export function useSourceChat(sourceId: string) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [contextIndicators, setContextIndicators] = useState<SourceChatContextIndicator | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Tracks the latest visible message count per session so stale session fetches
+  // do not clobber optimistic/local messages that are newer than the cache.
+  const expectedMessageCountRef = useRef<Record<string, number>>({})
 
   // Fetch sessions
   const { data: sessions = [], isLoading: loadingSessions, refetch: refetchSessions } = useQuery<SourceChatSession[]>({
@@ -40,6 +43,13 @@ export function useSourceChat(sourceId: string) {
   // Update messages when session changes
   useEffect(() => {
     if (currentSession?.messages) {
+      const expectedCount = expectedMessageCountRef.current[currentSession.id] ?? 0
+
+      if (currentSession.messages.length < expectedCount) {
+        return
+      }
+
+      expectedMessageCountRef.current[currentSession.id] = currentSession.messages.length
       setMessages(currentSession.messages)
     }
   }, [currentSession])
@@ -128,7 +138,11 @@ export function useSourceChat(sourceId: string) {
       content: message,
       timestamp: new Date().toISOString()
     }
-    setMessages(prev => [...prev, userMessage])
+    setMessages(prev => {
+      const next = [...prev, userMessage]
+      expectedMessageCountRef.current[sessionId!] = next.length
+      return next
+    })
     setIsStreaming(true)
 
     try {
@@ -166,7 +180,11 @@ export function useSourceChat(sourceId: string) {
                     content: data.content || '',
                     timestamp: new Date().toISOString()
                   }
-                  setMessages(prev => [...prev, aiMessage!])
+                  setMessages(prev => {
+                    const next = [...prev, aiMessage!]
+                    expectedMessageCountRef.current[sessionId!] = next.length
+                    return next
+                  })
                 } else {
                   aiMessage.content += data.content || ''
                   setMessages(prev =>
@@ -196,7 +214,11 @@ export function useSourceChat(sourceId: string) {
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
       // Remove optimistic messages on error
-      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
+      setMessages(prev => {
+        const next = prev.filter(msg => !msg.id.startsWith('temp-'))
+        expectedMessageCountRef.current[sessionId!] = next.length
+        return next
+      })
     } finally {
       setIsStreaming(false)
       // Refetch session to get persisted messages

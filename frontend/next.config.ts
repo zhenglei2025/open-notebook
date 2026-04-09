@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
   // Enable standalone output for optimized Docker deployment
   output: "standalone",
   basePath,
+  assetPrefix: basePath || undefined,
 
   // Experimental features
   // Type assertion needed: proxyClientMaxBodySize is valid in Next.js 15 but types lag behind
@@ -34,6 +35,20 @@ const nextConfig: NextConfig = {
   // Next.js handles internal routing to the API backend on port 5055
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath,
+  },
+  async redirects() {
+    if (!basePath) {
+      return []
+    }
+
+    return [
+      {
+        source: '/',
+        destination: basePath,
+        permanent: false,
+        basePath: false,
+      },
+    ]
   },
   async rewrites() {
     // INTERNAL_API_URL: Where Next.js server-side should proxy API requests

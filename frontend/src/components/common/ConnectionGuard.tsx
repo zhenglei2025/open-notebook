@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { ConnectionError } from '@/lib/types/config'
 import { ConnectionErrorOverlay } from '@/components/errors/ConnectionErrorOverlay'
 import { getConfig, resetConfig } from '@/lib/config'
+import { withBasePath } from '@/lib/base-path'
 
 interface ConnectionGuardProps {
   children: React.ReactNode
@@ -56,7 +57,7 @@ export function ConnectionGuard({ children }: ConnectionGuardProps) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       const attemptedUrl =
         typeof window !== 'undefined'
-          ? `${window.location.origin}/api/config`
+          ? `${window.location.origin}${withBasePath('/api/config')}`
           : undefined
 
       const apiError: ConnectionError = {

@@ -97,4 +97,37 @@ describe('Config Priority', () => {
     const url = await getApiUrl()
     expect(url).toBe('')
   })
+
+  it('should include the configured base path when using same-origin API routing', async () => {
+    vi.resetModules()
+    process.env.NEXT_PUBLIC_BASE_PATH = '/notebooks'
+    delete process.env.NEXT_PUBLIC_API_URL
+
+    const { getApiUrl: getApiUrlWithBasePath, resetConfig: resetConfigWithBasePath } = await import('./config')
+    resetConfigWithBasePath()
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ apiUrl: '' }),
+    } as Response)
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ version: '1.0.0' }),
+    } as Response)
+
+    const url = await getApiUrlWithBasePath()
+
+    expect(url).toBe('')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/notebooks/config',
+      expect.objectContaining({ cache: 'no-store' })
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/notebooks/api/config',
+      expect.objectContaining({ cache: 'no-store' })
+    )
+  })
 })

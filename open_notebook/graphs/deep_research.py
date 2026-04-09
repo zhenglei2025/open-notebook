@@ -254,7 +254,11 @@ async def _notebook_vector_search(
 
     # Debug: check how many sources are linked to this notebook
     sources_check = await repo_query(
-        "SELECT VALUE in FROM reference WHERE out = $notebook_id",
+        """
+        SELECT VALUE id
+        FROM source
+        WHERE id IN (SELECT VALUE in FROM reference WHERE out = $notebook_id)
+        """,
         {"notebook_id": ensure_record_id(notebook_id)},
     )
     logger.info(f"Notebook {notebook_id} has {len(sources_check) if sources_check else 0} linked sources: {sources_check}")
@@ -1216,4 +1220,3 @@ deep_research_graph.add_edge("compile_report", END)
 
 # Compile the graph
 graph = deep_research_graph.compile()
-

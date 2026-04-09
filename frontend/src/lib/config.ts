@@ -12,6 +12,20 @@ const BUILD_TIME = new Date().toISOString()
 let config: AppConfig | null = null
 let configPromise: Promise<AppConfig> | null = null
 
+export function buildApiEndpoint(baseUrl: string, path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+
+  if (!baseUrl) {
+    return withBasePath(normalizedPath)
+  }
+
+  const normalizedBaseUrl = baseUrl.endsWith('/')
+    ? baseUrl.slice(0, -1)
+    : baseUrl
+
+  return `${normalizedBaseUrl}${normalizedPath}`
+}
+
 /**
  * Get the API URL to use for requests.
  *
@@ -113,9 +127,11 @@ async function fetchConfig(): Promise<AppConfig> {
   }
 
   try {
-    if (isDev) console.log('🔧 [Config] Fetching backend config from:', `${baseUrl}/api/config`)
+    const apiConfigUrl = buildApiEndpoint(baseUrl, '/api/config')
+
+    if (isDev) console.log('🔧 [Config] Fetching backend config from:', apiConfigUrl)
     // Try to fetch runtime config from backend API
-    const response = await fetch(`${baseUrl}/api/config`, {
+    const response = await fetch(apiConfigUrl, {
       cache: 'no-store',
     })
 

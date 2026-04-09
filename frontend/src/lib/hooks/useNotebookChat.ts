@@ -35,6 +35,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null)
   // AbortController for cancelling in-flight chat requests
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Tracks the latest visible message count per session so stale session fetches
+  // do not clobber optimistic/local messages that are newer than the cache.
+  const expectedMessageCountRef = useRef<Record<string, number>>({})
 
   // Add messages to the local state (e.g. for injecting Deep Research results before refresh)
   const addLocalMessages = useCallback((newMessages: NotebookChatMessage[]) => {
@@ -85,6 +88,13 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   // Update messages when current session changes
   useEffect(() => {
     if (currentSession?.messages) {
+      const expectedCount = expectedMessageCountRef.current[currentSession.id] ?? 0
+
+      if (currentSession.messages.length < expectedCount) {
+        return
+      }
+
+      expectedMessageCountRef.current[currentSession.id] = currentSession.messages.length
       setMessages(currentSession.messages)
     }
   }, [currentSession])
@@ -238,7 +248,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       content: message,
       timestamp: new Date().toISOString()
     }
-    setMessages(prev => [...prev, userMessage])
+    setMessages(prev => {
+      const next = [...prev, userMessage]
+      expectedMessageCountRef.current[sessionId!] = next.length
+      return next
+    })
     setIsSending(true)
 
     try {
@@ -257,6 +271,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }, controller.signal)
 
       // Update messages with API response (authoritative — includes all messages)
+      expectedMessageCountRef.current[sessionId!] = response.messages.length
       setMessages(response.messages)
 
       // Invalidate session query so it refreshes in background (do NOT await refetch
@@ -273,7 +288,11 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       console.error('Error sending message:', error)
       toast.error(getApiErrorMessage(error.response?.data?.detail || error.message, (key) => t(key), 'apiErrors.failedToSendMessage'))
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
+      setMessages(prev => {
+        const next = prev.filter(msg => !msg.id.startsWith('temp-'))
+        expectedMessageCountRef.current[sessionId!] = next.length
+        return next
+      })
     } finally {
       abortControllerRef.current = null
       setIsSending(false)
@@ -295,9 +314,15 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       abortControllerRef.current = null
       setIsSending(false)
       // Remove optimistic message
-      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')))
+      setMessages(prev => {
+        const next = prev.filter(msg => !msg.id.startsWith('temp-'))
+        if (currentSessionId) {
+          expectedMessageCountRef.current[currentSessionId] = next.length
+        }
+        return next
+      })
     }
-  }, [])
+  }, [currentSessionId])
 
   // Switch session
   const switchSession = useCallback((sessionId: string) => {

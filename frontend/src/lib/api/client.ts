@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios'
-import { getApiUrl } from '@/lib/config'
+import { buildApiEndpoint, getApiUrl } from '@/lib/config'
+import { withBasePath } from '@/lib/base-path'
 
 // API client with runtime-configurable base URL
 // The base URL is fetched from the API config endpoint on first request
@@ -20,7 +21,7 @@ apiClient.interceptors.request.use(async (config) => {
   // Set the base URL dynamically from runtime config
   if (!config.baseURL) {
     const apiUrl = await getApiUrl()
-    config.baseURL = `${apiUrl}/api`
+    config.baseURL = buildApiEndpoint(apiUrl, '/api')
   }
 
   if (typeof window !== 'undefined') {
@@ -56,7 +57,7 @@ apiClient.interceptors.response.use(
       // Clear auth and redirect to login
       if (typeof window !== 'undefined') {
         localStorage.removeItem('auth-storage')
-        window.location.href = '/login'
+        window.location.href = withBasePath('/login')
       }
     }
     return Promise.reject(error)

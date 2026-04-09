@@ -181,6 +181,28 @@ class TestSourceDomain:
             mock_delete.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_source_delete_cleans_up_notebook_references(self):
+        """Test that deleting a source removes notebook reference edges."""
+        source = Source(id="source:test_refs", title="Test Source", asset=None)
+
+        with patch(
+            "open_notebook.domain.notebook.repo_query", new_callable=AsyncMock
+        ) as mock_repo_query:
+            with patch.object(
+                Source.__bases__[0], "delete", new_callable=AsyncMock
+            ) as mock_delete:
+                mock_delete.return_value = True
+
+                result = await source.delete()
+
+        assert result is True
+        mock_delete.assert_called_once()
+        assert mock_repo_query.await_count == 3
+        first_call = mock_repo_query.await_args_list[0]
+        assert first_call.args[0] == "DELETE reference WHERE in = $source_id"
+        assert str(first_call.args[1]["source_id"]) == "source:test_refs"
+
+    @pytest.mark.asyncio
     async def test_source_delete_continues_on_file_error(self):
         """Test that source deletion continues even if file deletion fails."""
         # Create source with non-existent file

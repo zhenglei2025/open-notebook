@@ -1,5 +1,5 @@
 import apiClient from './client'
-import { getApiUrl } from '@/lib/config'
+import { buildApiEndpoint, getApiUrl } from '@/lib/config'
 import {
   PodcastEpisode,
   EpisodeProfile,
@@ -22,12 +22,7 @@ export async function resolvePodcastAssetUrl(path?: string | null): Promise<stri
   }
 
   const base = await getApiUrl()
-
-  if (path.startsWith('/')) {
-    return `${base}${path}`
-  }
-
-  return `${base}/${path}`
+  return buildApiEndpoint(base, path)
 }
 
 export const podcastsApi = {

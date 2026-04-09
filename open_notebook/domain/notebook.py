@@ -30,14 +30,14 @@ class Notebook(ObjectModel):
         try:
             srcs = await repo_query(
                 """
-                select * omit source.full_text from (
-                select in as source from reference where out=$id
-                fetch source
-            ) order by source.updated desc
-            """,
+                SELECT * OMIT full_text
+                FROM source
+                WHERE id IN (SELECT VALUE in FROM reference WHERE out = $id)
+                ORDER BY updated DESC
+                """,
                 {"id": ensure_record_id(self.id)},
             )
-            return [Source(**src["source"]) for src in srcs] if srcs else []
+            return [Source(**src) for src in srcs] if srcs else []
         except Exception as e:
             logger.error(f"Error fetching sources for notebook {self.id}: {str(e)}")
             logger.exception(e)
@@ -593,6 +593,10 @@ class Source(ObjectModel):
         try:
             source_id = ensure_record_id(self.id)
             await repo_query(
+                "DELETE reference WHERE in = $source_id",
+                {"source_id": source_id},
+            )
+            await repo_query(
                 "DELETE source_embedding WHERE source = $source_id",
                 {"source_id": source_id},
             )
@@ -600,10 +604,12 @@ class Source(ObjectModel):
                 "DELETE source_insight WHERE source = $source_id",
                 {"source_id": source_id},
             )
-            logger.debug(f"Deleted embeddings and insights for source {self.id}")
+            logger.debug(
+                f"Deleted notebook references, embeddings, and insights for source {self.id}"
+            )
         except Exception as e:
             logger.warning(
-                f"Failed to delete embeddings/insights for source {self.id}: {e}. "
+                f"Failed to delete references/embeddings/insights for source {self.id}: {e}. "
                 "Continuing with source deletion."
             )
 

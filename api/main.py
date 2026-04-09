@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,8 +64,6 @@ async def lifespan(app: FastAPI):
     Lifespan event handler for the FastAPI application.
     Runs database migrations automatically on startup.
     """
-    import os
-
     # Startup: Security checks
     logger.info("Starting API initialization...")
 
@@ -152,22 +151,59 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _normalize_base_path(base_path: str | None) -> str:
+    if not base_path:
+        return ""
+
+    trimmed = base_path.strip()
+    if not trimmed or trimmed == "/":
+        return ""
+
+    if not trimmed.startswith("/"):
+        trimmed = f"/{trimmed}"
+
+    return trimmed.rstrip("/")
+
+
+BASE_PATH = _normalize_base_path(os.getenv("OPEN_NOTEBOOK_BASE_PATH"))
+
+
+def _with_base_path(path: str) -> str:
+    if not BASE_PATH:
+        return path
+    return f"{BASE_PATH}{path}"
+
+
+def _prefixed_paths(paths: list[str]) -> list[str]:
+    if not BASE_PATH:
+        return paths
+
+    prefixed = []
+    for path in paths:
+        prefixed.append(path)
+        prefixed.append(_with_base_path(path))
+    return prefixed
+
+
+AUTH_EXCLUDED_PATHS = _prefixed_paths([
+    "/",
+    "/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/api/auth/status",
+    "/api/auth/login",
+    "/api/auth/change-password",
+    "/api/auth/register",
+    "/api/config",
+])
+
 # Add multi-user JWT authentication middleware
 # Exclude auth and config endpoints from authentication
 app.add_middleware(
     MultiUserAuthMiddleware,
-    excluded_paths=[
-        "/",
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
-        "/api/auth/status",
-        "/api/auth/login",
-        "/api/auth/change-password",
-        "/api/auth/register",
-        "/api/config",
-    ],
+    excluded_paths=AUTH_EXCLUDED_PATHS,
 )
 
 # Add CORS middleware last (so it processes first)
@@ -289,42 +325,49 @@ async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
     )
 
 
+def include_api_router(router, prefix: str = "/api", tags: list[str] | None = None):
+    app.include_router(router, prefix=prefix, tags=tags)
+
+    if BASE_PATH:
+        app.include_router(router, prefix=_with_base_path(prefix), tags=tags)
+
+
 # Include routers
-app.include_router(auth.router, prefix="/api", tags=["auth"])
+include_api_router(auth.router, prefix="/api", tags=["auth"])
 
 # Admin user management router
 from api.routers.admin_users import router as admin_users_router
 
-app.include_router(admin_users_router, prefix="/api", tags=["admin"])
-app.include_router(config.router, prefix="/api", tags=["config"])
-app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
-app.include_router(search.router, prefix="/api", tags=["search"])
+include_api_router(admin_users_router, prefix="/api", tags=["admin"])
+include_api_router(config.router, prefix="/api", tags=["config"])
+include_api_router(notebooks.router, prefix="/api", tags=["notebooks"])
+include_api_router(search.router, prefix="/api", tags=["search"])
 
 # Deep Research router
 from api.routers.deep_research import router as deep_research_router
 
-app.include_router(deep_research_router, prefix="/api", tags=["deep-research"])
-app.include_router(models.router, prefix="/api", tags=["models"])
-app.include_router(transformations.router, prefix="/api", tags=["transformations"])
-app.include_router(notes.router, prefix="/api", tags=["notes"])
-app.include_router(note_ppt.router, prefix="/api", tags=["note-ppt"])
-app.include_router(embedding.router, prefix="/api", tags=["embedding"])
-app.include_router(
+include_api_router(deep_research_router, prefix="/api", tags=["deep-research"])
+include_api_router(models.router, prefix="/api", tags=["models"])
+include_api_router(transformations.router, prefix="/api", tags=["transformations"])
+include_api_router(notes.router, prefix="/api", tags=["notes"])
+include_api_router(note_ppt.router, prefix="/api", tags=["note-ppt"])
+include_api_router(embedding.router, prefix="/api", tags=["embedding"])
+include_api_router(
     embedding_rebuild.router, prefix="/api/embeddings", tags=["embeddings"]
 )
-app.include_router(settings.router, prefix="/api", tags=["settings"])
-app.include_router(context.router, prefix="/api", tags=["context"])
-app.include_router(sources.router, prefix="/api", tags=["sources"])
-app.include_router(insights.router, prefix="/api", tags=["insights"])
-app.include_router(commands_router.router, prefix="/api", tags=["commands"])
-app.include_router(feedback.router, prefix="/api", tags=["feedback"])
-app.include_router(podcasts.router, prefix="/api", tags=["podcasts"])
-app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profiles"])
-app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
-app.include_router(chat.router, prefix="/api", tags=["chat"])
-app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
-app.include_router(credentials.router, prefix="/api", tags=["credentials"])
-app.include_router(languages.router, prefix="/api", tags=["languages"])
+include_api_router(settings.router, prefix="/api", tags=["settings"])
+include_api_router(context.router, prefix="/api", tags=["context"])
+include_api_router(sources.router, prefix="/api", tags=["sources"])
+include_api_router(insights.router, prefix="/api", tags=["insights"])
+include_api_router(commands_router.router, prefix="/api", tags=["commands"])
+include_api_router(feedback.router, prefix="/api", tags=["feedback"])
+include_api_router(podcasts.router, prefix="/api", tags=["podcasts"])
+include_api_router(episode_profiles.router, prefix="/api", tags=["episode-profiles"])
+include_api_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
+include_api_router(chat.router, prefix="/api", tags=["chat"])
+include_api_router(source_chat.router, prefix="/api", tags=["source-chat"])
+include_api_router(credentials.router, prefix="/api", tags=["credentials"])
+include_api_router(languages.router, prefix="/api", tags=["languages"])
 
 
 @app.get("/")
@@ -332,6 +375,18 @@ async def root():
     return {"message": "Open Notebook API is running"}
 
 
+if BASE_PATH:
+    @app.get(_with_base_path("/"))
+    async def root_with_base_path():
+        return {"message": "Open Notebook API is running"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+if BASE_PATH:
+    @app.get(_with_base_path("/health"))
+    async def health_with_base_path():
+        return {"status": "healthy"}

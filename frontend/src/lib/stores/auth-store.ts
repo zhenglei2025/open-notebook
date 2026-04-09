@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { getApiUrl } from '@/lib/config'
+import { buildApiEndpoint, getApiUrl } from '@/lib/config'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>()(
       checkAuthRequired: async () => {
         try {
           const apiUrl = await getApiUrl()
-          const response = await fetch(`${apiUrl}/api/auth/status`, {
+          const response = await fetch(buildApiEndpoint(apiUrl, '/api/auth/status'), {
             cache: 'no-store',
           })
 
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
           const apiUrl = await getApiUrl()
 
           // Call the login endpoint
-          const response = await fetch(`${apiUrl}/api/auth/login`, {
+          const response = await fetch(buildApiEndpoint(apiUrl, '/api/auth/login'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -190,7 +190,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const apiUrl = await getApiUrl()
 
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
+          const response = await fetch(buildApiEndpoint(apiUrl, '/api/notebooks'), {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${token}`,

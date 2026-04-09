@@ -36,7 +36,7 @@ from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, get_current_user_db, repo_query
 from open_notebook.domain.notebook import Asset, Notebook, Source
 from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import InvalidInputError
+from open_notebook.exceptions import InvalidInputError, NotFoundError
 
 router = APIRouter()
 
@@ -675,7 +675,8 @@ async def get_sources(
                 SELECT id, asset, created, title, updated, topics, command, embedding_command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM (select value in from reference where out=$notebook_id)
+                FROM source
+                WHERE id IN (SELECT VALUE in FROM reference WHERE out = $notebook_id)
                 {order_clause}
                 LIMIT $limit START $offset
             """
@@ -1313,6 +1314,8 @@ async def get_source_status(source_id: str):
                 else None,
             )
 
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
     except HTTPException:
         raise
     except Exception as e:

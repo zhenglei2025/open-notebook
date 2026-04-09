@@ -3,9 +3,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from api.routers import sources
 from api.models import SourceCreate
+from open_notebook.exceptions import NotFoundError
 
 
 def _write_zip(zip_path: Path, files: dict[str, bytes]) -> None:
@@ -420,6 +422,21 @@ class TestArchiveImport:
         assert status == "failed"
         assert processing_info["embedding_error"] == "Embedding provider timed out"
         assert message == "Embedding provider timed out"
+
+    @pytest.mark.asyncio
+    async def test_get_source_status_returns_404_for_deleted_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        async def fake_get(_source_id):
+            raise NotFoundError("source with id source:deleted not found")
+
+        monkeypatch.setattr(sources.Source, "get", fake_get)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await sources.get_source_status("source:deleted")
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Source not found"
 
     def test_source_normalizes_enum_like_command_status_strings(self):
         source = sources.Source()
