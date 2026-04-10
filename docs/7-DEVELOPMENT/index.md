@@ -48,6 +48,7 @@ For deeper dives, check `/open_notebook/` CLAUDE.md for component-specific guida
 | [Code Standards](code-standards.md) | Writing code | Style guides for Python, FastAPI, DB |
 | [Testing](testing.md) | Testing code | How to write and run tests |
 | [Architecture](architecture.md) | Understanding system | System design, tech stack, workflows |
+| [Subdirectory Migration Playbook](subdirectory-migration-playbook.md) | Deploying under `/notebooks` or other subpaths | Migration checklist for root-to-subdirectory deployments |
 | [Design Principles](design-principles.md) | All developers | What guides our decisions |
 | [API Reference](api-reference.md) | Building integrations | Complete REST API documentation |
 | [Maintainer Guide](maintainer-guide.md) | Maintainers | Managing issues, PRs, releases |
